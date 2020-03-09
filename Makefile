@@ -1,7 +1,9 @@
 PROJECT     := github.com/cfhamlet/os-rq-hub
+BASEPROJECT := github.com/cfhamlet/os-rq-pod
 BINNAME     ?= rq-hub
 BINDIR      := $(CURDIR)/bin
 BUILDTIME   := $(shell date +'%Y-%m-%d %H:%M:%S')
+ROOTLOGGER  := HUB
 
 GOPATH      := $(shell go env GOPATH)
 GOVERSION   := $(shell go version)
@@ -22,7 +24,8 @@ GIT_TAG     := $(shell git describe --tags --abbrev=0 --exact-match 2>/dev/null)
 GIT_STATUS  := $(shell test -n "`git status --porcelain`" && echo "dirty" || echo "clean")
 
 VERSION     ?= $(GIT_TAG)
-VERSIONMOD  := $(PROJECT)/internal/version
+VERSIONMOD  := $(BASEPROJECT)/pkg/version
+LOGMOD      := $(BASEPROJECT)/pkg/log
 
 ifneq ($(VERSION),)
 	LDFLAGS +=  -X "$(VERSIONMOD).version=$(VERSION)"
@@ -33,6 +36,7 @@ LDFLAGS +=  -X "$(VERSIONMOD).buildTime=$(BUILDTIME)"
 LDFLAGS +=  -X "$(VERSIONMOD).gitCommit=$(GIT_COMMIT)"
 LDFLAGS +=  -X "$(VERSIONMOD).gitTag=$(GIT_TAG)"
 LDFLAGS +=  -X "$(VERSIONMOD).gitStatus=$(GIT_STATUS)"
+LDFLAGS +=  -X "$(LOGMOD).rootLoggerName=$(ROOTLOGGER)"
 
 .PHONY: all
 all: build
