@@ -8,10 +8,16 @@ http:
   log:
     enable: true
   api:
-    path: "v1"
+    path: "api"
 
 redis:
   addr: "localhost:6379"
   password: ""
   db: 0
   max_mem_limit: 102400
+
+limit:
+  redis:
+    memory: 102400
+  queue:
+    num: 1000
