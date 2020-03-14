@@ -5,11 +5,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/segmentio/fasthash/fnv1a"
 )
 
 // UpstreamID TODO
-type UpstreamID struct {
+type UpstreamID string
+
+// ItemID TODO
+func (uid UpstreamID) ItemID() uint64 {
+	return fnv1a.HashString64(string(uid))
 }
 
 // UpstreamStatus TODO
@@ -31,39 +37,40 @@ var UpstreamStatusList = []UpstreamStatus{
 	UpstreamUnavailable,
 }
 
-// Upstream TODO
-type Upstream struct {
-	ID          UpstreamID
-	hub         *Hub
-	api         string
-	status      UpstreamStatus
-	queueIdxMap map[pod.QueueID]int
-	queueIDs    []pod.QueueID
-	locker      *sync.RWMutex
+// UpstreamMeta TODO
+type UpstreamMeta struct {
+	ID  UpstreamID
+	api string
 }
 
-// IdxUpstream TODO
-type IdxUpstream struct {
-	Idx int
-	*Upstream
+// Upstream TODO
+type Upstream struct {
+	*UpstreamMeta
+	hub      *Hub
+	status   UpstreamStatus
+	queueIDs *slicemap.Map
+	locker   *sync.RWMutex
 }
 
 // NewUpstream TODO
-func NewUpstream(hub *Hub, api string) *Upstream {
+func NewUpstream(hub *Hub, meta *UpstreamMeta) *Upstream {
 	return &Upstream{
-		UpstreamID{},
+		meta,
 		hub,
-		api,
 		UpstreamPreparing,
-		map[pod.QueueID]int{},
-		[]pod.QueueID{},
+		slicemap.New(),
 		&sync.RWMutex{},
 	}
 }
 
+// ItemID TODO
+func (stream *Upstream) ItemID() uint64 {
+	return stream.ID.ItemID()
+}
+
 // QueuesSelector TODO
 type QueuesSelector interface {
-	Queues(int) []Result
+	Queues() []Result
 }
 
 // EmptySelector TODO
@@ -71,42 +78,11 @@ type EmptySelector struct {
 }
 
 // Queues TODO
-func (selector *EmptySelector) Queues(k int) []Result {
+func (selector *EmptySelector) Queues() []Result {
 	return []Result{}
 }
 
 var emptySelector = &EmptySelector{}
-
-// UpstreamSelector TODO
-type UpstreamSelector struct {
-	stream *Upstream
-}
-
-// NewUpstreamSelector TODO
-func NewUpstreamSelector(stream *Upstream) *UpstreamSelector {
-	return &UpstreamSelector{stream}
-}
-
-// Queues TODO
-func (selector *UpstreamSelector) Queues(k int) []Result {
-	queueIDs := selector.stream.queueIDs
-	l := len(queueIDs)
-	var out []Result
-	if k > l {
-		k = l
-	}
-	out = make([]Result, 0, k)
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s := r.Perm(l)
-	for _, i := range s {
-		qid := queueIDs[i]
-		out = append(out, Result{"qid": qid})
-		if len(out) >= k {
-			break
-		}
-	}
-	return out
-}
 
 // AllSelector TODO
 type AllSelector struct {
@@ -119,7 +95,7 @@ func NewAllSelector(mgr *UpstreamManager) *AllSelector {
 }
 
 // Queues TODO
-func (selector *AllSelector) Queues(k int) []Result {
+func (selector *AllSelector) Queues() []Result {
 	mgr := selector.mgr
 	out := make([]Result, 0, len(mgr.queueBox.queueUpstreamsMap))
 	for qid := range mgr.queueBox.queueUpstreamsMap {
@@ -129,114 +105,147 @@ func (selector *AllSelector) Queues(k int) []Result {
 	return out
 }
 
-// RandSelectUnit TODO
-type RandSelectUnit struct {
-	total int
-	start int
-	cur   int
+// CycleCountIter TODO
+type CycleCountIter struct {
+	iter  *slicemap.CycleIter
 	count int
+}
+
+// NewCycleCountIter TODO
+func NewCycleCountIter(m *slicemap.Map, start, steps int) *CycleCountIter {
+	return &CycleCountIter{slicemap.NewCycleIter(m, start, steps), 0}
+}
+
+// Iter TODO
+func (iter *CycleCountIter) Iter(f func(slicemap.Item)) {
+	iter.iter.Iter(
+		func(item slicemap.Item) {
+			f(item)
+			iter.count++
+		},
+	)
+}
+
+// Break TODO
+func (iter *CycleCountIter) Break() {
+	iter.iter.Break()
 }
 
 // RandSelector TODO
 type RandSelector struct {
-	mgr         *UpstreamManager
-	r           *rand.Rand
-	selected    map[pod.QueueID]bool
-	selectUnits map[UpstreamID]*RandSelectUnit
+	mgr       *UpstreamManager
+	r         *rand.Rand
+	k         int
+	selected  map[pod.QueueID]bool
+	iterators map[UpstreamID]*CycleCountIter
+	out       []Result
 }
 
 // NewRandSelector TODO
-func NewRandSelector(mgr *UpstreamManager) *RandSelector {
+func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &RandSelector{
 		mgr,
 		r,
+		k,
 		map[pod.QueueID]bool{},
-		map[UpstreamID]*RandSelectUnit{},
+		map[UpstreamID]*CycleCountIter{},
+		make([]Result, 0, k),
 	}
 }
 
 // Queues TODO
-func (selector *RandSelector) Queues(k int) []Result {
-	upstreams := selector.mgr.statusUpstreamsMap[UpstreamWorking]
-	l := len(upstreams)
-	choices := make([]*Upstream, l)
-	copy(upstreams, choices)
+func (selector *RandSelector) Queues() []Result {
+	upstreams := selector.mgr.statusUpstreams[UpstreamWorking]
+	l := upstreams.Size()
+	choices := make([]*Upstream, 0, l)
 
-	i := selector.r.Intn(l)
-	out := make([]Result, 0, k)
-	for ; len(out) < k && len(choices) > 0; i++ {
-		i = i % l
-		n := (k - len(out)) / l
+	start := selector.r.Intn(l)
+	iterator := slicemap.NewCycleIter(upstreams, start, l)
+
+	iterator.Iter(
+		func(item slicemap.Item) {
+			n := selector.k / l
+			if n <= 0 {
+				n = 1
+			}
+			stream := item.(*Upstream)
+			if !selector.fill(stream, n) {
+				choices = append(choices, stream)
+				l--
+			}
+			if selector.k <= 0 {
+				iterator.Break()
+			}
+		},
+	)
+
+	l = len(choices)
+	for i := 0; selector.k > 0 && l > 0; i++ {
+		n := selector.k / l
 		if n <= 0 {
 			n = 1
 		}
 		stream := choices[i]
-
-		if selector.fill(stream, &out, n) {
+		if selector.fill(stream, n) {
 			choices = append(choices[:i], choices[i+1:]...)
 			i--
+			l--
 		}
 
 	}
-	return out
+	return selector.out
 }
 
-func (selector *RandSelector) fill(stream *Upstream, out *[]Result, n int) bool {
-	unit, ok := selector.selectUnits[stream.ID]
-	l := len(stream.queueIDs)
+func (selector *RandSelector) fill(stream *Upstream, n int) bool {
+
+	iterator, ok := selector.iterators[stream.ID]
+	l := stream.queueIDs.Size()
 	if !ok {
-		s := selector.r.Intn(l)
-		unit = &RandSelectUnit{l, s, s, 0}
-		selector.selectUnits[stream.ID] = unit
-	}
-	for i := 0; i < n && unit.count < unit.total; i++ {
-		qid := stream.queueIDs[unit.cur]
-		_, ok := selector.selected[qid]
-		if !ok {
-			selector.selected[qid] = true
-			*out = append(*out, Result{"qid": qid})
-		}
-
-		unit.cur++
-		if unit.cur >= unit.total {
-			unit.cur = 0
-		}
-		unit.count++
+		iterator = NewCycleCountIter(stream.queueIDs, selector.r.Intn(l), l)
 	}
 
-	if unit.count >= unit.total {
+	iterator.Iter(
+		func(item slicemap.Item) {
+			qid := item.(pod.QueueID)
+			_, ok := selector.selected[qid]
+			if !ok {
+				selector.out = append(selector.out, Result{"qid": qid})
+				selector.k--
+			}
+			n--
+			if n <= 0 || iterator.count+1 >= l {
+				iterator.Break()
+			}
+		},
+	)
+
+	if iterator.count >= l {
 		return true
 	}
-
+	selector.iterators[stream.ID] = iterator
 	return false
 }
 
-// StatusUpstreamsMap TODO
-type StatusUpstreamsMap map[UpstreamStatus][]*Upstream
-
-// IdxUpstreamMap TODO
-type IdxUpstreamMap map[UpstreamID]*IdxUpstream
-
 // UpstreamManager TODO
 type UpstreamManager struct {
-	hub                *Hub
-	idxUpstreamMap     IdxUpstreamMap
-	statusUpstreamsMap StatusUpstreamsMap
-	queueBox           *QueueBox
-	locker             *sync.RWMutex
+	hub             *Hub
+	upstreamMap     map[UpstreamID]*Upstream
+	statusUpstreams map[UpstreamStatus]*slicemap.Map
+	queueBox        *QueueBox
+	locker          *sync.RWMutex
 }
 
 // NewUpstreamManager TODO
 func NewUpstreamManager(hub *Hub) *UpstreamManager {
-	statusUpstreamsMap := StatusUpstreamsMap{}
+	statusUpstreams := map[UpstreamStatus]*slicemap.Map{}
 	for _, status := range UpstreamStatusList {
-		statusUpstreamsMap[status] = []*Upstream{}
+		statusUpstreams[status] = slicemap.New()
 	}
 	return &UpstreamManager{
 		hub,
-		IdxUpstreamMap{},
-		statusUpstreamsMap,
+		map[UpstreamID]*Upstream{},
+		statusUpstreams,
 		NewQueueBox(hub),
 		&sync.RWMutex{},
 	}
@@ -256,20 +265,18 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 	mgr.locker.RLock()
 	defer mgr.locker.RUnlock()
 
-	upstreams := mgr.statusUpstreamsMap[UpstreamWorking]
-	l := len(upstreams)
+	upstreams := mgr.statusUpstreams[UpstreamWorking]
+	l := upstreams.Size()
 	total := len(mgr.queueBox.queueUpstreamsMap)
 	var selector QueuesSelector
 	if l <= 0 {
 		selector = emptySelector
-	} else if total < k {
+	} else if total <= k {
 		selector = NewAllSelector(mgr)
-	} else if l == 1 {
-		selector = NewUpstreamSelector(upstreams[0])
 	} else {
-		selector = NewRandSelector(mgr)
+		selector = NewRandSelector(mgr, k)
 	}
-	out := selector.Queues(k)
+	out := selector.Queues()
 	return Result{
 		"k":         k,
 		"queues":    out,
