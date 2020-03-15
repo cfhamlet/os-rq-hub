@@ -33,9 +33,9 @@ func (wp *HandlerWrapper) Wrap(f CtrlFunc) gin.HandlerFunc {
 			switch err.(type) {
 			case *url.Error, ctrl.InvalidQuery, ctrl.InvalidBody:
 				code = http.StatusBadRequest
-			case pod.QueueNotExistError:
+			case pod.QueueNotExistError, core.NotExistError:
 				code = http.StatusNotFound
-			case pod.UnavailableError:
+			case pod.UnavailableError, core.UnavailableError, core.ExistError:
 				code = http.StatusNotAcceptable
 			default:
 				code = http.StatusInternalServerError
