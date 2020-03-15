@@ -34,17 +34,31 @@ func Info(c *gin.Context, hub *core.Hub) (core.Result, error) {
 }
 
 // AddUpstream TODO
-func AddUpstream(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
+func AddUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	var meta *core.UpstreamMeta = &core.UpstreamMeta{}
+
+	if err = c.ShouldBindJSON(meta); err != nil {
+		err = ctrl.InvalidBody(fmt.Sprintf("%s", err))
+	} else {
+		result, err = hub.AddUpstream(meta)
+	}
+
+	c.Header("Access-Control-Allow-Origin", "*")
+	return
+}
+
+// StopUpstream TODO
+func StopUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	return
+}
+
+// StartUpstream TODO
+func StartUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	return
 }
 
 // DeleteUpstream TODO
 func DeleteUpstream(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
-}
-
-// UpdateUpstream TODO
-func UpdateUpstream(c *gin.Context, hub *core.Hub) (core.Result, error) {
 	return nil, nil
 }
 
@@ -55,6 +69,11 @@ func UpstreamInfo(c *gin.Context, hub *core.Hub) (core.Result, error) {
 
 // Upstreams TODO
 func Upstreams(c *gin.Context, hub *core.Hub) (core.Result, error) {
+	return nil, nil
+}
+
+// DownstreamInfo TODO
+func DownstreamInfo(c *gin.Context, hub *core.Hub) (core.Result, error) {
 	return nil, nil
 }
 
@@ -81,6 +100,12 @@ func Queues(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
 }
 
 // GetRequest TODO
-func GetRequest(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
+func GetRequest(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	q := c.Query("q")
+
+	qid, err := ctrl.QueueIDFromQuery(q)
+	if err == nil {
+		result, err = hub.GetRequest(qid)
+	}
+	return
 }
