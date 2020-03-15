@@ -33,3 +33,8 @@ func NewQueueBox(hub *Hub) *QueueBox {
 		&sync.RWMutex{},
 	}
 }
+
+// GetRequest TODO
+func (box *QueueBox) GetRequest(qid pod.QueueID) (Result, error) {
+	return nil, nil
+}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
+	"github.com/cfhamlet/os-rq-pod/pod"
 	"github.com/go-redis/redis/v7"
 	"github.com/shirou/gopsutil/process"
 	"github.com/spf13/viper"
@@ -126,4 +127,14 @@ func (hub *Hub) setStatus(status Status) (Result, error) {
 // Queues TODO
 func (hub *Hub) Queues(k int) (result Result) {
 	return hub.downstreamMgr.Queues(k)
+}
+
+// AddUpstream TODO
+func (hub *Hub) AddUpstream(meta *UpstreamMeta) (Result, error) {
+	return hub.upstreamMgr.AddUpstream(meta)
+}
+
+// GetRequest TODO
+func (hub *Hub) GetRequest(qid pod.QueueID) (Result, error) {
+	return hub.downstreamMgr.GetRequest(qid)
 }
