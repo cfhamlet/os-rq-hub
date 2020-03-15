@@ -1,9 +1,8 @@
 package hub
 
 import (
-	"math/rand"
+	"fmt"
 	"sync"
-	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pod"
@@ -25,7 +24,9 @@ type UpstreamStatus string
 const (
 	UpstreamPreparing   UpstreamStatus = "preparing"
 	UpstreamWorking     UpstreamStatus = "working"
-	UpstreamPaused      UpstreamStatus = "paused"
+	UpstreamStopping    UpstreamStatus = "stopping"
+	UpstreamStopped     UpstreamStatus = "stopped"
+	UpstreamRemoving    UpstreamStatus = "removing"
 	UpstreamUnavailable UpstreamStatus = "unavailable"
 )
 
@@ -33,14 +34,15 @@ const (
 var UpstreamStatusList = []UpstreamStatus{
 	UpstreamPreparing,
 	UpstreamWorking,
-	UpstreamPaused,
+	UpstreamStopping,
+	UpstreamStopped,
 	UpstreamUnavailable,
 }
 
 // UpstreamMeta TODO
 type UpstreamMeta struct {
-	ID  UpstreamID
-	api string
+	ID  UpstreamID `json:"id" binding:"required"`
+	API string     `json:"api" binding:"required"`
 }
 
 // Upstream TODO
@@ -57,177 +59,23 @@ func NewUpstream(hub *Hub, meta *UpstreamMeta) *Upstream {
 	return &Upstream{
 		meta,
 		hub,
-		UpstreamPreparing,
+		UpstreamStopped,
 		slicemap.New(),
 		&sync.RWMutex{},
 	}
 }
 
 // ItemID TODO
-func (stream *Upstream) ItemID() uint64 {
-	return stream.ID.ItemID()
+func (upstream *Upstream) ItemID() uint64 {
+	return upstream.ID.ItemID()
 }
 
-// QueuesSelector TODO
-type QueuesSelector interface {
-	Select() []Result
+// Start TODO
+func (upstream *Upstream) Start() {
 }
 
-// EmptySelector TODO
-type EmptySelector struct {
-}
-
-// Select TODO
-func (selector *EmptySelector) Select() []Result {
-	return []Result{}
-}
-
-var emptySelector = &EmptySelector{}
-
-// AllSelector TODO
-type AllSelector struct {
-	mgr *UpstreamManager
-}
-
-// NewAllSelector TODO
-func NewAllSelector(mgr *UpstreamManager) *AllSelector {
-	return &AllSelector{mgr}
-}
-
-// Select TODO
-func (selector *AllSelector) Select() []Result {
-	mgr := selector.mgr
-	out := make([]Result, 0, len(mgr.queueBox.queueUpstreamsMap))
-	for qid := range mgr.queueBox.queueUpstreamsMap {
-		r := Result{"qid": qid}
-		out = append(out, r)
-	}
-	return out
-}
-
-// CycleCountIter TODO
-type CycleCountIter struct {
-	cycle *slicemap.CycleIter
-	count int
-}
-
-// NewCycleCountIter TODO
-func NewCycleCountIter(m *slicemap.Map, start, steps int) *CycleCountIter {
-	return &CycleCountIter{slicemap.NewCycleIter(m, start, steps), 0}
-}
-
-// Iter TODO
-func (iter *CycleCountIter) Iter(f func(slicemap.Item)) {
-	iter.cycle.Iter(
-		func(item slicemap.Item) {
-			f(item)
-			iter.count++
-		},
-	)
-}
-
-// Break TODO
-func (iter *CycleCountIter) Break() {
-	iter.cycle.Break()
-}
-
-// RandSelector TODO
-type RandSelector struct {
-	mgr       *UpstreamManager
-	r         *rand.Rand
-	k         int
-	selected  map[pod.QueueID]bool
-	iterators map[UpstreamID]*CycleCountIter
-	out       []Result
-}
-
-// NewRandSelector TODO
-func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return &RandSelector{
-		mgr,
-		r,
-		k,
-		map[pod.QueueID]bool{},
-		map[UpstreamID]*CycleCountIter{},
-		make([]Result, 0, k),
-	}
-}
-
-// Select TODO
-func (selector *RandSelector) Select() []Result {
-	upstreams := selector.mgr.statusUpstreams[UpstreamWorking]
-	l := upstreams.Size()
-	choices := make([]*Upstream, 0, l)
-
-	start := selector.r.Intn(l)
-	iterator := slicemap.NewCycleIter(upstreams, start, l)
-
-	iterator.Iter(
-		func(item slicemap.Item) {
-			n := selector.k / l
-			if n <= 0 {
-				n = 1
-			}
-			stream := item.(*Upstream)
-			if !selector.choice(stream, n) {
-				choices = append(choices, stream)
-				l--
-			}
-			if selector.k <= 0 || l <= 0 {
-				iterator.Break()
-			}
-		},
-	)
-
-	l = len(choices)
-	for i := 0; selector.k > 0 && l > 0; i++ {
-		i = i % l
-		n := selector.k / l
-		if n <= 0 {
-			n = 1
-		}
-		stream := choices[i]
-		if selector.choice(stream, n) {
-			choices = append(choices[:i], choices[i+1:]...)
-			i--
-			l--
-		}
-
-	}
-	return selector.out
-}
-
-func (selector *RandSelector) choice(stream *Upstream, n int) bool {
-
-	iterator, ok := selector.iterators[stream.ID]
-	l := stream.queueIDs.Size()
-	if !ok {
-		iterator = NewCycleCountIter(stream.queueIDs, selector.r.Intn(l), n)
-	} else {
-		iterator.cycle.SetSteps(n)
-	}
-
-	iterator.Iter(
-		func(item slicemap.Item) {
-			qid := item.(pod.QueueID)
-			_, ok := selector.selected[qid]
-			if !ok {
-				selector.out = append(selector.out, Result{"qid": qid})
-				selector.k--
-			}
-			if iterator.count+1 >= l {
-				iterator.Break()
-			}
-		},
-	)
-
-	if iterator.count >= l {
-		delete(selector.iterators, stream.ID)
-		return true
-	}
-	selector.iterators[stream.ID] = iterator
-	return false
+// Stop TODO
+func (upstream *Upstream) Stop() {
 }
 
 // UpstreamManager TODO
@@ -255,12 +103,89 @@ func NewUpstreamManager(hub *Hub) *UpstreamManager {
 }
 
 // AddUpstream TODO
-func (mgr *UpstreamManager) AddUpstream() error {
-	return nil
+func (mgr *UpstreamManager) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
+	mgr.locker.Lock()
+	defer mgr.locker.Unlock()
+	_, ok := mgr.upstreamMap[meta.ID]
+	if ok {
+		err = ExistError(meta.ID)
+	} else {
+		upstream := NewUpstream(mgr.hub, meta)
+		mgr.upstreamMap[meta.ID] = upstream
+		mgr.statusUpstreams[upstream.status].Add(upstream)
+		return mgr.startUpstream(meta.ID)
+	}
+	return
 }
 
-func (mgr *UpstreamManager) setStatus() error {
-	return nil
+// DeleteUpstream TODO
+func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
+	mgr.locker.Lock()
+	defer mgr.locker.Unlock()
+	return nil, nil
+}
+
+func (mgr *UpstreamManager) startUpstream(id UpstreamID) (result Result, err error) {
+	upstream, ok := mgr.upstreamMap[id]
+	if !ok {
+		err = NotExistError(id)
+	} else {
+		if upstream.status != UpstreamStopped {
+			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
+		} else {
+			mgr.setStatus(id, UpstreamPreparing)
+			go upstream.Start()
+			result = Result{"id": id, "status": upstream.status}
+		}
+	}
+	return
+}
+
+// StartUpstream TODO
+func (mgr *UpstreamManager) StartUpstream(id UpstreamID) (result Result, err error) {
+	mgr.locker.Lock()
+	defer mgr.locker.Unlock()
+	return mgr.startUpstream(id)
+}
+
+func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (result Result, err error) {
+	upstream, ok := mgr.upstreamMap[id]
+	if !ok {
+		err = NotExistError(id)
+	} else {
+		if upstream.status != UpstreamWorking &&
+			upstream.status != UpstreamPreparing &&
+			upstream.status != UpstreamUnavailable {
+			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
+		} else {
+			mgr.setStatus(id, UpstreamStopping)
+			go upstream.Stop()
+			result = Result{"id": id, "status": upstream.status}
+		}
+	}
+	return
+}
+
+// StopUpstream TODO
+func (mgr *UpstreamManager) StopUpstream(id UpstreamID) (result Result, err error) {
+	mgr.locker.Lock()
+	defer mgr.locker.Unlock()
+	return mgr.stopUpstream(id)
+}
+
+func (mgr *UpstreamManager) setStatus(id UpstreamID, status UpstreamStatus) (err error) {
+	upstream, ok := mgr.upstreamMap[id]
+	if !ok {
+		err = NotExistError(string(id))
+	} else {
+		oldStatus := upstream.status
+		if oldStatus != status {
+			mgr.statusUpstreams[oldStatus].Delete(upstream)
+			mgr.statusUpstreams[status].Add(upstream)
+			upstream.status = status
+		}
+	}
+	return
 }
 
 // Queues TODO
@@ -286,4 +211,11 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 		"total":     total,
 		"upstreams": l,
 	}
+}
+
+// GetRequest TODO
+func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+	mgr.locker.RLock()
+	defer mgr.locker.RUnlock()
+	return mgr.queueBox.GetRequest(qid)
 }
