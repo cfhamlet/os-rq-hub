@@ -1,5 +1,7 @@
 package hub
 
+import "github.com/cfhamlet/os-rq-pod/pod"
+
 // Downstream TODO
 type Downstream struct {
 }
@@ -17,4 +19,9 @@ func NewDownstreamManager(hub *Hub) *DownstreamManager {
 // Queues TODO
 func (mgr *DownstreamManager) Queues(k int) Result {
 	return mgr.hub.upstreamMgr.Queues(k)
+}
+
+// GetRequest TODO
+func (mgr *DownstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+	return mgr.hub.upstreamMgr.GetRequest(qid)
 }
