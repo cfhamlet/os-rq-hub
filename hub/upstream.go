@@ -70,15 +70,15 @@ func (stream *Upstream) ItemID() uint64 {
 
 // QueuesSelector TODO
 type QueuesSelector interface {
-	Queues() []Result
+	Select() []Result
 }
 
 // EmptySelector TODO
 type EmptySelector struct {
 }
 
-// Queues TODO
-func (selector *EmptySelector) Queues() []Result {
+// Select TODO
+func (selector *EmptySelector) Select() []Result {
 	return []Result{}
 }
 
@@ -94,8 +94,8 @@ func NewAllSelector(mgr *UpstreamManager) *AllSelector {
 	return &AllSelector{mgr}
 }
 
-// Queues TODO
-func (selector *AllSelector) Queues() []Result {
+// Select TODO
+func (selector *AllSelector) Select() []Result {
 	mgr := selector.mgr
 	out := make([]Result, 0, len(mgr.queueBox.queueUpstreamsMap))
 	for qid := range mgr.queueBox.queueUpstreamsMap {
@@ -107,7 +107,7 @@ func (selector *AllSelector) Queues() []Result {
 
 // CycleCountIter TODO
 type CycleCountIter struct {
-	iter  *slicemap.CycleIter
+	cycle *slicemap.CycleIter
 	count int
 }
 
@@ -118,7 +118,7 @@ func NewCycleCountIter(m *slicemap.Map, start, steps int) *CycleCountIter {
 
 // Iter TODO
 func (iter *CycleCountIter) Iter(f func(slicemap.Item)) {
-	iter.iter.Iter(
+	iter.cycle.Iter(
 		func(item slicemap.Item) {
 			f(item)
 			iter.count++
@@ -128,7 +128,7 @@ func (iter *CycleCountIter) Iter(f func(slicemap.Item)) {
 
 // Break TODO
 func (iter *CycleCountIter) Break() {
-	iter.iter.Break()
+	iter.cycle.Break()
 }
 
 // RandSelector TODO
@@ -154,8 +154,8 @@ func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
 	}
 }
 
-// Queues TODO
-func (selector *RandSelector) Queues() []Result {
+// Select TODO
+func (selector *RandSelector) Select() []Result {
 	upstreams := selector.mgr.statusUpstreams[UpstreamWorking]
 	l := upstreams.Size()
 	choices := make([]*Upstream, 0, l)
@@ -170,11 +170,11 @@ func (selector *RandSelector) Queues() []Result {
 				n = 1
 			}
 			stream := item.(*Upstream)
-			if !selector.fill(stream, n) {
+			if !selector.choice(stream, n) {
 				choices = append(choices, stream)
 				l--
 			}
-			if selector.k <= 0 {
+			if selector.k <= 0 || l <= 0 {
 				iterator.Break()
 			}
 		},
@@ -182,12 +182,13 @@ func (selector *RandSelector) Queues() []Result {
 
 	l = len(choices)
 	for i := 0; selector.k > 0 && l > 0; i++ {
+		i = i % l
 		n := selector.k / l
 		if n <= 0 {
 			n = 1
 		}
 		stream := choices[i]
-		if selector.fill(stream, n) {
+		if selector.choice(stream, n) {
 			choices = append(choices[:i], choices[i+1:]...)
 			i--
 			l--
@@ -197,12 +198,14 @@ func (selector *RandSelector) Queues() []Result {
 	return selector.out
 }
 
-func (selector *RandSelector) fill(stream *Upstream, n int) bool {
+func (selector *RandSelector) choice(stream *Upstream, n int) bool {
 
 	iterator, ok := selector.iterators[stream.ID]
 	l := stream.queueIDs.Size()
 	if !ok {
-		iterator = NewCycleCountIter(stream.queueIDs, selector.r.Intn(l), l)
+		iterator = NewCycleCountIter(stream.queueIDs, selector.r.Intn(l), n)
+	} else {
+		iterator.cycle.SetSteps(n)
 	}
 
 	iterator.Iter(
@@ -213,14 +216,14 @@ func (selector *RandSelector) fill(stream *Upstream, n int) bool {
 				selector.out = append(selector.out, Result{"qid": qid})
 				selector.k--
 			}
-			n--
-			if n <= 0 || iterator.count+1 >= l {
+			if iterator.count+1 >= l {
 				iterator.Break()
 			}
 		},
 	)
 
 	if iterator.count >= l {
+		delete(selector.iterators, stream.ID)
 		return true
 	}
 	selector.iterators[stream.ID] = iterator
@@ -276,7 +279,7 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 	} else {
 		selector = NewRandSelector(mgr, k)
 	}
-	out := selector.Queues()
+	out := selector.Select()
 	return Result{
 		"k":         k,
 		"queues":    out,
