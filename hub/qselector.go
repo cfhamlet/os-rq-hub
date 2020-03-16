@@ -37,8 +37,8 @@ func NewAllSelector(mgr *UpstreamManager) *AllSelector {
 // Select TODO
 func (selector *AllSelector) Select() []Result {
 	mgr := selector.mgr
-	out := make([]Result, 0, len(mgr.queueBox.queueUpstreamsMap))
-	for qid := range mgr.queueBox.queueUpstreamsMap {
+	out := make([]Result, 0, len(mgr.queueBox.queueUpstreams))
+	for qid := range mgr.queueBox.queueUpstreams {
 		r := Result{"qid": qid}
 		out = append(out, r)
 	}

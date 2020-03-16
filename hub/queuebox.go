@@ -20,9 +20,9 @@ type QueueUpstreams struct {
 
 // QueueBox TODO
 type QueueBox struct {
-	hub               *Hub
-	queueUpstreamsMap QueueUpstreamsMap
-	locker            *sync.RWMutex
+	hub            *Hub
+	queueUpstreams QueueUpstreamsMap
+	locker         *sync.RWMutex
 }
 
 // NewQueueBox TODO

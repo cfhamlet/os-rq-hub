@@ -91,11 +91,9 @@ func Queues(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
 	} else if k <= 0 || k > 1000 {
 		err = ctrl.InvalidQuery(fmt.Sprintf("k=%s [1, 1000]", qk))
 	}
-	if err != nil {
-		return
+	if err == nil {
+		result, err = hub.Queues(int(k))
 	}
-
-	result = hub.Queues(int(k))
 	return
 }
 

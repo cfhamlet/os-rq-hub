@@ -34,27 +34,83 @@ type Hub struct {
 
 	conf          *viper.Viper
 	status        Status
-	stLocker      *sync.RWMutex
+	locker        *sync.RWMutex
+	waitStop      *sync.WaitGroup
 	upstreamMgr   *UpstreamManager
 	downstreamMgr *DownstreamManager
 }
 
 // OnStart TODO
 func (hub *Hub) OnStart() (err error) {
-	_, err = hub.setStatus(Working)
+	hub.locker.Lock()
+	defer hub.locker.Unlock()
+
+	hub.setStatus(Preparing)
+	hub.waitStop.Add(2)
+
+	err = hub.start()
+	return
+}
+
+// Resume TODO
+func (hub *Hub) Resume() (result Result, err error) {
+	hub.locker.Lock()
+	defer hub.locker.Unlock()
+
+	if hub.status == Working {
+		result = hub.metaInfo()
+	} else if hub.status == Paused {
+		err = hub.start()
+		if err == nil {
+			result = hub.metaInfo()
+		}
+	} else {
+		err = UnavailableError(hub.status)
+	}
+
+	return
+}
+
+func (hub *Hub) start() (err error) {
+	if hub.status == Stopping || hub.status == Stopped {
+		err = UnavailableError(hub.status)
+	} else if hub.status == Working {
+	} else {
+		hub.setStatus(Working)
+	}
+	return
+}
+
+// Pause TODO
+func (hub *Hub) Pause() (result Result, err error) {
+	hub.locker.Lock()
+	defer hub.locker.Unlock()
+
+	if hub.status == Paused || hub.status == Working {
+		if hub.status == Working {
+			hub.setStatus(Paused)
+		}
+		result = hub.metaInfo()
+	} else {
+		err = UnavailableError(hub.status)
+	}
 	return
 }
 
 // OnStop TODO
 func (hub *Hub) OnStop() (err error) {
-	_, err = hub.setStatus(Stopping)
-	if err != nil {
+	hub.locker.Lock()
+	defer hub.locker.Unlock()
+
+	if hub.status == Stopping || hub.status == Stopped {
 		return
 	}
-	_, err = hub.setStatus(Stopped)
-	if err != nil {
-		return
-	}
+
+	hub.setStatus(Stopping)
+	hub.downstreamMgr.Stop()
+	hub.upstreamMgr.Stop()
+	hub.waitStop.Wait()
+	hub.setStatus(Stopped)
 	return
 }
 
@@ -68,7 +124,7 @@ func NewHub(conf *viper.Viper, client *redis.Client) (hub *Hub, err error) {
 
 	hub = &Hub{
 		client, proc, conf,
-		Preparing, &sync.RWMutex{},
+		Stopped, &sync.RWMutex{}, &sync.WaitGroup{},
 		nil, nil,
 	}
 
@@ -88,14 +144,14 @@ func (hub *Hub) metaInfo() (result Result) {
 	v, _ := hub.Process.MemoryInfo()
 	c, _ := hub.Process.CPUPercent()
 	result["process"] = Result{"memory": v, "cpu": Result{"percent": c}}
-
+	result["upstreams"] = hub.upstreamMgr.Info()
 	return
 }
 
 // Info TODO
 func (hub *Hub) Info() (result Result, err error) {
-	hub.stLocker.RLock()
-	defer hub.stLocker.RUnlock()
+	hub.locker.RLock()
+	defer hub.locker.RUnlock()
 
 	result = hub.metaInfo()
 
@@ -116,25 +172,43 @@ func (hub *Hub) Info() (result Result, err error) {
 	return
 }
 
-func (hub *Hub) setStatus(status Status) (Result, error) {
-	hub.stLocker.Lock()
-	defer hub.stLocker.Unlock()
-
+func (hub *Hub) setStatus(status Status) {
 	hub.status = status
-	return hub.metaInfo(), nil
 }
 
 // Queues TODO
-func (hub *Hub) Queues(k int) (result Result) {
-	return hub.downstreamMgr.Queues(k)
+func (hub *Hub) Queues(k int) (result Result, err error) {
+	hub.locker.RLock()
+	defer hub.locker.RUnlock()
+	if hub.status != Working && hub.status != Paused {
+		err = UnavailableError(hub.status)
+	} else {
+		result = hub.downstreamMgr.Queues(k)
+	}
+	return
 }
 
 // AddUpstream TODO
-func (hub *Hub) AddUpstream(meta *UpstreamMeta) (Result, error) {
-	return hub.upstreamMgr.AddUpstream(meta)
+func (hub *Hub) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
+	hub.locker.RLock()
+	defer hub.locker.RUnlock()
+
+	if hub.status != Working && hub.status != Paused {
+		err = UnavailableError(hub.status)
+	} else {
+		result, err = hub.upstreamMgr.AddUpstream(meta)
+	}
+	return
 }
 
 // GetRequest TODO
-func (hub *Hub) GetRequest(qid pod.QueueID) (Result, error) {
-	return hub.downstreamMgr.GetRequest(qid)
+func (hub *Hub) GetRequest(qid pod.QueueID) (result Result, err error) {
+	hub.locker.RLock()
+	defer hub.locker.RUnlock()
+	if hub.status != Working {
+		err = UnavailableError(hub.status)
+	} else {
+		result, err = hub.downstreamMgr.GetRequest(qid)
+	}
+	return
 }

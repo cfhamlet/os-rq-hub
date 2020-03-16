@@ -65,6 +65,11 @@ func NewUpstream(hub *Hub, meta *UpstreamMeta) *Upstream {
 	}
 }
 
+// UpdateQueuesTask TODO
+type UpdateQueuesTask struct {
+	upstream *Upstream
+}
+
 // ItemID TODO
 func (upstream *Upstream) ItemID() uint64 {
 	return upstream.ID.ItemID()
@@ -72,18 +77,25 @@ func (upstream *Upstream) ItemID() uint64 {
 
 // Start TODO
 func (upstream *Upstream) Start() {
+	upstream.locker.Lock()
+	defer upstream.locker.Unlock()
+	upstream.hub.upstreamMgr.closewait.Add(1)
 }
 
 // Stop TODO
 func (upstream *Upstream) Stop() {
+	upstream.locker.Lock()
+	defer upstream.locker.Unlock()
+	upstream.hub.upstreamMgr.closewait.Done()
 }
 
 // UpstreamManager TODO
 type UpstreamManager struct {
 	hub             *Hub
-	upstreamMap     map[UpstreamID]*Upstream
+	upstreams       map[UpstreamID]*Upstream
 	statusUpstreams map[UpstreamStatus]*slicemap.Map
 	queueBox        *QueueBox
+	closewait       *sync.WaitGroup
 	locker          *sync.RWMutex
 }
 
@@ -98,6 +110,7 @@ func NewUpstreamManager(hub *Hub) *UpstreamManager {
 		map[UpstreamID]*Upstream{},
 		statusUpstreams,
 		NewQueueBox(hub),
+		&sync.WaitGroup{},
 		&sync.RWMutex{},
 	}
 }
@@ -106,12 +119,12 @@ func NewUpstreamManager(hub *Hub) *UpstreamManager {
 func (mgr *UpstreamManager) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
 	mgr.locker.Lock()
 	defer mgr.locker.Unlock()
-	_, ok := mgr.upstreamMap[meta.ID]
+	_, ok := mgr.upstreams[meta.ID]
 	if ok {
 		err = ExistError(meta.ID)
 	} else {
 		upstream := NewUpstream(mgr.hub, meta)
-		mgr.upstreamMap[meta.ID] = upstream
+		mgr.upstreams[meta.ID] = upstream
 		mgr.statusUpstreams[upstream.status].Add(upstream)
 		return mgr.startUpstream(meta.ID)
 	}
@@ -122,11 +135,37 @@ func (mgr *UpstreamManager) AddUpstream(meta *UpstreamMeta) (result Result, err 
 func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
 	mgr.locker.Lock()
 	defer mgr.locker.Unlock()
-	return nil, nil
+	upstream, ok := mgr.upstreams[id]
+	if !ok {
+		err = NotExistError(id)
+	} else {
+		if upstream.status == UpstreamRemoving {
+			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
+		} else {
+			mgr.setStatus(id, UpstreamRemoving)
+			upstream.Stop()
+			result = Result{"id": id, "status": upstream.status}
+		}
+	}
+	return
+}
+
+// Info TODO
+func (mgr *UpstreamManager) Info() (result Result) {
+	mgr.locker.RLock()
+	defer mgr.locker.RUnlock()
+
+	st := Result{}
+	for _, status := range UpstreamStatusList {
+		st[string(status)] = mgr.statusUpstreams[status].Size()
+	}
+	result = Result{"status": st}
+	result["queues"] = len(mgr.queueBox.queueUpstreams)
+	return
 }
 
 func (mgr *UpstreamManager) startUpstream(id UpstreamID) (result Result, err error) {
-	upstream, ok := mgr.upstreamMap[id]
+	upstream, ok := mgr.upstreams[id]
 	if !ok {
 		err = NotExistError(id)
 	} else {
@@ -134,7 +173,7 @@ func (mgr *UpstreamManager) startUpstream(id UpstreamID) (result Result, err err
 			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
 		} else {
 			mgr.setStatus(id, UpstreamPreparing)
-			go upstream.Start()
+			upstream.Start()
 			result = Result{"id": id, "status": upstream.status}
 		}
 	}
@@ -149,7 +188,7 @@ func (mgr *UpstreamManager) StartUpstream(id UpstreamID) (result Result, err err
 }
 
 func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (result Result, err error) {
-	upstream, ok := mgr.upstreamMap[id]
+	upstream, ok := mgr.upstreams[id]
 	if !ok {
 		err = NotExistError(id)
 	} else {
@@ -159,7 +198,7 @@ func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (result Result, err erro
 			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
 		} else {
 			mgr.setStatus(id, UpstreamStopping)
-			go upstream.Stop()
+			upstream.Stop()
 			result = Result{"id": id, "status": upstream.status}
 		}
 	}
@@ -174,7 +213,7 @@ func (mgr *UpstreamManager) StopUpstream(id UpstreamID) (result Result, err erro
 }
 
 func (mgr *UpstreamManager) setStatus(id UpstreamID, status UpstreamStatus) (err error) {
-	upstream, ok := mgr.upstreamMap[id]
+	upstream, ok := mgr.upstreams[id]
 	if !ok {
 		err = NotExistError(string(id))
 	} else {
@@ -195,7 +234,7 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 
 	upstreams := mgr.statusUpstreams[UpstreamWorking]
 	l := upstreams.Size()
-	total := len(mgr.queueBox.queueUpstreamsMap)
+	total := len(mgr.queueBox.queueUpstreams)
 	var selector QueuesSelector
 	if l <= 0 {
 		selector = emptySelector
@@ -218,4 +257,9 @@ func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
 	mgr.locker.RLock()
 	defer mgr.locker.RUnlock()
 	return mgr.queueBox.GetRequest(qid)
+}
+
+// Stop TODO
+func (mgr *UpstreamManager) Stop() {
+	mgr.hub.waitStop.Done()
 }

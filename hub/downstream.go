@@ -25,3 +25,8 @@ func (mgr *DownstreamManager) Queues(k int) Result {
 func (mgr *DownstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
 	return mgr.hub.upstreamMgr.GetRequest(qid)
 }
+
+// Stop TODO
+func (mgr *DownstreamManager) Stop() {
+	mgr.hub.waitStop.Done()
+}
