@@ -14,24 +14,24 @@ func InitAPIRouter(g ginserv.RouterGroup, hub *core.Hub) {
 		Path     string
 		F        controller.CtrlFunc
 	}{
-		{g.GET, "/queues/", controller.Queues},
+		{g.POST, "/queues/", controller.Queues},
 
-		{g.GET, "/sys/info/", controller.Info},
-		{g.GET, "/sys/info/process/memory/", controller.ProcessMemory},
-		{g.GET, "/sys/info/redis/memory/", controller.RedisMemory},
-		{g.GET, "/sys/info/redis/", controller.RedisInfo},
+		{g.GET, "/system/info/", controller.Info},
+		{g.GET, "/system/info/process/memory/", controller.ProcessMemory},
+		{g.GET, "/system/info/redis/memory/", controller.RedisMemory},
+		{g.GET, "/system/info/redis/", controller.RedisInfo},
 
 		{g.POST, "/upstream/", controller.AddUpstream},
 		{g.DELETE, "/upstream/", controller.DeleteUpstream},
-		{g.GET, "/upstream/start/", controller.StartUpstream},
-		{g.GET, "/upstream/stop/", controller.StopUpstream},
+		{g.GET, "/upstream/resume/", controller.ResumeUpstream},
+		{g.GET, "/upstream/pause/", controller.PauseUpstream},
 		{g.GET, "/upstream/info/", controller.UpstreamInfo},
 		{g.GET, "/upstreams/", controller.Upstreams},
 
 		{g.GET, "/downstream/info/", controller.DownstreamInfo},
 		{g.GET, "/downstreams/", controller.Downstreams},
 
-		{g.GET, "/request/pop/", controller.GetRequest},
+		{g.POST, "/request/pop/", controller.GetRequest},
 	}
 
 	wp := controller.NewHandlerWrapper(hub)

@@ -9,6 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// CallByUpstreamID TODO
+type CallByUpstreamID func(core.UpstreamID) (core.Result, error)
+
 func infoResult(info interface{}, err error) (core.Result, error) {
 	return core.Result{"info": info}, err
 }
@@ -47,24 +50,38 @@ func AddUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) 
 	return
 }
 
-// StopUpstream TODO
-func StopUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+func operateUpstreamByQuery(c *gin.Context, f CallByUpstreamID) (result core.Result, err error) {
+	uid := c.Query("uid")
+
+	if uid == "" {
+		err = ctrl.InvalidQuery("invalid uid")
+	} else {
+		result, err = f(core.UpstreamID(uid))
+	}
+	if result == nil {
+		result = core.Result{"uid": uid}
+	}
 	return
 }
 
-// StartUpstream TODO
-func StartUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
-	return
+// PauseUpstream TODO
+func PauseUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	return operateUpstreamByQuery(c, hub.PauseUpstream)
+}
+
+// ResumeUpstream TODO
+func ResumeUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	return operateUpstreamByQuery(c, hub.ResumeUpstream)
 }
 
 // DeleteUpstream TODO
 func DeleteUpstream(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
+	return operateUpstreamByQuery(c, hub.DeleteUpstream)
 }
 
 // UpstreamInfo TODO
 func UpstreamInfo(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
+	return operateUpstreamByQuery(c, hub.UpstreamInfo)
 }
 
 // Upstreams TODO
