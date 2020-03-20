@@ -29,8 +29,8 @@ const (
 // Result TODO
 type Result map[string]interface{}
 
-// ReturnResultAndError TODO
-type ReturnResultAndError func() (Result, error)
+// ResultAndErrorFunc TODO
+type ResultAndErrorFunc func() (Result, error)
 
 // Hub TODO
 type Hub struct {
@@ -68,13 +68,13 @@ func NewHub(conf *viper.Viper, client *redis.Client) (hub *Hub, err error) {
 	return
 }
 
-func (hub *Hub) withLockOnWorkStatus(f ReturnResultAndError) (result Result, err error) {
+func (hub *Hub) withLockOnWorkStatus(f ResultAndErrorFunc) (result Result, err error) {
 	return hub.withLockRLockOnWorkStatus(f, true)
 }
-func (hub *Hub) withRLockOnWorkStatus(f ReturnResultAndError) (result Result, err error) {
+func (hub *Hub) withRLockOnWorkStatus(f ResultAndErrorFunc) (result Result, err error) {
 	return hub.withLockRLockOnWorkStatus(f, false)
 }
-func (hub *Hub) withLockRLockOnWorkStatus(f ReturnResultAndError, lock bool) (result Result, err error) {
+func (hub *Hub) withLockRLockOnWorkStatus(f ResultAndErrorFunc, lock bool) (result Result, err error) {
 	if lock {
 		hub.Lock()
 		defer hub.Unlock()
@@ -174,6 +174,7 @@ func (hub *Hub) OnStop() (err error) {
 		hub.waitStop.Wait()
 		err = hub.setStatus(Stopped)
 	}
+	log.Logger.Info("hub stopped")
 	return
 }
 
