@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
@@ -16,27 +15,42 @@ type UpstreamID string
 func (uid UpstreamID) ItemID() uint64 {
 	return fnv1a.HashString64(string(uid))
 }
+func workUpstreamStatus(status UpstreamStatus) bool {
+	return status == UpstreamWorking || status == UpstreamPaused
+}
 
 // UpstreamStatus TODO
 type UpstreamStatus string
 
 // Status enum
 const (
-	UpstreamPreparing   UpstreamStatus = "preparing"
+	UpstreamInit        UpstreamStatus = "init"
 	UpstreamWorking     UpstreamStatus = "working"
-	UpstreamStopping    UpstreamStatus = "stopping"
-	UpstreamStopped     UpstreamStatus = "stopped"
-	UpstreamRemoving    UpstreamStatus = "removing"
+	UpstreamPaused      UpstreamStatus = "paused"
 	UpstreamUnavailable UpstreamStatus = "unavailable"
+
+	UpstreamStopping UpstreamStatus = "stopping"
+	UpstreamStopped  UpstreamStatus = "stopped"
+	UpstreamRemoving UpstreamStatus = "removing"
+	UpstreamRemoved  UpstreamStatus = "removed"
 )
 
 // UpstreamStatusList TODO
 var UpstreamStatusList = []UpstreamStatus{
-	UpstreamPreparing,
+	UpstreamInit,
 	UpstreamWorking,
+	UpstreamPaused,
+	UpstreamUnavailable,
 	UpstreamStopping,
 	UpstreamStopped,
-	UpstreamUnavailable,
+	UpstreamRemoving,
+	UpstreamRemoved,
+}
+
+// UpstreamStoreMeta TODO
+type UpstreamStoreMeta struct {
+	*UpstreamMeta
+	Status UpstreamStatus `json:"status" binding:"required"`
 }
 
 // UpstreamMeta TODO
@@ -48,26 +62,85 @@ type UpstreamMeta struct {
 // Upstream TODO
 type Upstream struct {
 	*UpstreamMeta
-	hub      *Hub
 	status   UpstreamStatus
+	mgr      *UpstreamManager
 	queueIDs *slicemap.Map
-	locker   *sync.RWMutex
+	qtask    *UpdateQueuesTask
+	*sync.RWMutex
 }
 
 // NewUpstream TODO
-func NewUpstream(hub *Hub, meta *UpstreamMeta) *Upstream {
-	return &Upstream{
+func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
+	upstream := &Upstream{
 		meta,
-		hub,
-		UpstreamStopped,
+		UpstreamInit,
+		mgr,
 		slicemap.New(),
+		nil,
 		&sync.RWMutex{},
 	}
+
+	return upstream
 }
 
-// UpdateQueuesTask TODO
-type UpdateQueuesTask struct {
-	upstream *Upstream
+func (upstream *Upstream) setStatus(status UpstreamStatus) (err error) {
+
+	if upstream.status == status {
+		return
+	}
+	e := UnavailableError(upstream.status)
+	switch upstream.status {
+	case UpstreamInit:
+	case UpstreamUnavailable:
+		fallthrough
+	case UpstreamWorking:
+		fallthrough
+	case UpstreamPaused:
+		switch status {
+		case UpstreamInit:
+			fallthrough
+		case UpstreamStopped:
+			fallthrough
+		case UpstreamRemoved:
+			err = e
+		}
+	case UpstreamStopping:
+		switch status {
+		case UpstreamStopped:
+		default:
+			err = e
+		}
+	case UpstreamRemoving:
+		switch status {
+		case UpstreamRemoved:
+		default:
+			err = e
+		}
+	case UpstreamStopped:
+		fallthrough
+	case UpstreamRemoved:
+		err = e
+	}
+
+	if err != nil {
+		return
+	}
+
+	mgr := upstream.mgr
+
+	if upstream.status == UpstreamInit && status != UpstreamRemoved {
+		mgr.upstreams[upstream.ID] = upstream
+	}
+	mgr.statusUpstreams[upstream.status].Delete(upstream)
+	if status != UpstreamRemoved {
+		mgr.statusUpstreams[status].Add(upstream)
+	} else {
+		delete(mgr.upstreams, upstream.ID)
+	}
+
+	upstream.status = status
+
+	return
 }
 
 // ItemID TODO
@@ -76,161 +149,72 @@ func (upstream *Upstream) ItemID() uint64 {
 }
 
 // Start TODO
-func (upstream *Upstream) Start() {
-	upstream.locker.Lock()
-	defer upstream.locker.Unlock()
-	upstream.hub.upstreamMgr.closewait.Add(1)
-}
+func (upstream *Upstream) Start() (err error) {
+	upstream.Lock()
+	defer upstream.Unlock()
 
-// Stop TODO
-func (upstream *Upstream) Stop() {
-	upstream.locker.Lock()
-	defer upstream.locker.Unlock()
-	upstream.hub.upstreamMgr.closewait.Done()
-}
-
-// UpstreamManager TODO
-type UpstreamManager struct {
-	hub             *Hub
-	upstreams       map[UpstreamID]*Upstream
-	statusUpstreams map[UpstreamStatus]*slicemap.Map
-	queueBox        *QueueBox
-	closewait       *sync.WaitGroup
-	locker          *sync.RWMutex
-}
-
-// NewUpstreamManager TODO
-func NewUpstreamManager(hub *Hub) *UpstreamManager {
-	statusUpstreams := map[UpstreamStatus]*slicemap.Map{}
-	for _, status := range UpstreamStatusList {
-		statusUpstreams[status] = slicemap.New()
-	}
-	return &UpstreamManager{
-		hub,
-		map[UpstreamID]*Upstream{},
-		statusUpstreams,
-		NewQueueBox(hub),
-		&sync.WaitGroup{},
-		&sync.RWMutex{},
-	}
-}
-
-// AddUpstream TODO
-func (mgr *UpstreamManager) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
-	mgr.locker.Lock()
-	defer mgr.locker.Unlock()
-	_, ok := mgr.upstreams[meta.ID]
-	if ok {
-		err = ExistError(meta.ID)
+	if upstream.qtask != nil {
+		err = UnavailableError("already started")
 	} else {
-		upstream := NewUpstream(mgr.hub, meta)
-		mgr.upstreams[meta.ID] = upstream
-		mgr.statusUpstreams[upstream.status].Add(upstream)
-		return mgr.startUpstream(meta.ID)
+		if !workUpstreamStatus(upstream.status) {
+			err = upstream.setStatus(UpstreamWorking)
+		}
+		if err == nil {
+			upstream.qtask = NewUpdateQueuesTask(upstream)
+			go upstream.qtask.Start()
+		}
 	}
+
 	return
 }
 
-// DeleteUpstream TODO
-func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
-	mgr.locker.Lock()
-	defer mgr.locker.Unlock()
-	upstream, ok := mgr.upstreams[id]
-	if !ok {
-		err = NotExistError(id)
-	} else {
-		if upstream.status == UpstreamRemoving {
-			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
-		} else {
-			mgr.setStatus(id, UpstreamRemoving)
-			upstream.Stop()
-			result = Result{"id": id, "status": upstream.status}
-		}
+// Destory TODO
+func (upstream *Upstream) Destory() (err error) {
+	upstream.Lock()
+	defer upstream.Unlock()
+
+	if upstream.qtask == nil {
+		return
 	}
+	err = upstream.setStatus(UpstreamRemoving)
+	if err == nil {
+		go upstream.qtask.Stop()
+	}
+
+	return
+}
+
+// Stop TODO
+func (upstream *Upstream) Stop() (err error) {
+	upstream.Lock()
+	defer upstream.Unlock()
+
+	if upstream.qtask == nil {
+		return
+	}
+	err = upstream.setStatus(UpstreamStopping)
+	if err == nil {
+		go upstream.qtask.Stop()
+	}
+
 	return
 }
 
 // Info TODO
-func (mgr *UpstreamManager) Info() (result Result) {
-	mgr.locker.RLock()
-	defer mgr.locker.RUnlock()
-
-	st := Result{}
-	for _, status := range UpstreamStatusList {
-		st[string(status)] = mgr.statusUpstreams[status].Size()
+func (upstream *Upstream) Info() (result Result) {
+	upstream.RLock()
+	defer upstream.RUnlock()
+	return Result{
+		"id":     upstream.ID,
+		"status": upstream.status,
+		"queues": upstream.queueIDs.Size(),
 	}
-	result = Result{"status": st}
-	result["queues"] = len(mgr.queueBox.queueUpstreams)
-	return
-}
-
-func (mgr *UpstreamManager) startUpstream(id UpstreamID) (result Result, err error) {
-	upstream, ok := mgr.upstreams[id]
-	if !ok {
-		err = NotExistError(id)
-	} else {
-		if upstream.status != UpstreamStopped {
-			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
-		} else {
-			mgr.setStatus(id, UpstreamPreparing)
-			upstream.Start()
-			result = Result{"id": id, "status": upstream.status}
-		}
-	}
-	return
-}
-
-// StartUpstream TODO
-func (mgr *UpstreamManager) StartUpstream(id UpstreamID) (result Result, err error) {
-	mgr.locker.Lock()
-	defer mgr.locker.Unlock()
-	return mgr.startUpstream(id)
-}
-
-func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (result Result, err error) {
-	upstream, ok := mgr.upstreams[id]
-	if !ok {
-		err = NotExistError(id)
-	} else {
-		if upstream.status != UpstreamWorking &&
-			upstream.status != UpstreamPreparing &&
-			upstream.status != UpstreamUnavailable {
-			err = pod.UnavailableError(fmt.Sprintf("%s %s", id, upstream.status))
-		} else {
-			mgr.setStatus(id, UpstreamStopping)
-			upstream.Stop()
-			result = Result{"id": id, "status": upstream.status}
-		}
-	}
-	return
-}
-
-// StopUpstream TODO
-func (mgr *UpstreamManager) StopUpstream(id UpstreamID) (result Result, err error) {
-	mgr.locker.Lock()
-	defer mgr.locker.Unlock()
-	return mgr.stopUpstream(id)
-}
-
-func (mgr *UpstreamManager) setStatus(id UpstreamID, status UpstreamStatus) (err error) {
-	upstream, ok := mgr.upstreams[id]
-	if !ok {
-		err = NotExistError(string(id))
-	} else {
-		oldStatus := upstream.status
-		if oldStatus != status {
-			mgr.statusUpstreams[oldStatus].Delete(upstream)
-			mgr.statusUpstreams[status].Add(upstream)
-			upstream.status = status
-		}
-	}
-	return
 }
 
 // Queues TODO
 func (mgr *UpstreamManager) Queues(k int) (result Result) {
-	mgr.locker.RLock()
-	defer mgr.locker.RUnlock()
+	mgr.RLock()
+	defer mgr.RUnlock()
 
 	upstreams := mgr.statusUpstreams[UpstreamWorking]
 	l := upstreams.Size()
@@ -254,12 +238,7 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 
 // GetRequest TODO
 func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
-	mgr.locker.RLock()
-	defer mgr.locker.RUnlock()
+	mgr.RLock()
+	defer mgr.RUnlock()
 	return mgr.queueBox.GetRequest(qid)
-}
-
-// Stop TODO
-func (mgr *UpstreamManager) Stop() {
-	mgr.hub.waitStop.Done()
 }
