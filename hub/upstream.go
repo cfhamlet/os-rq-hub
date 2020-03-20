@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
-	"github.com/cfhamlet/os-rq-pod/pod"
 	"github.com/segmentio/fasthash/fnv1a"
 )
 
@@ -16,7 +15,16 @@ func (uid UpstreamID) ItemID() uint64 {
 	return fnv1a.HashString64(string(uid))
 }
 func workUpstreamStatus(status UpstreamStatus) bool {
-	return status == UpstreamWorking || status == UpstreamPaused
+	return status == UpstreamWorking ||
+		status == UpstreamPaused ||
+		status == UpstreamUnavailable
+}
+
+func stopUpstreamStatus(status UpstreamStatus) bool {
+	return status == UpstreamStopping ||
+		status == UpstreamStopped ||
+		status == UpstreamRemoving ||
+		status == UpstreamRemoved
 }
 
 // UpstreamStatus TODO
@@ -24,7 +32,8 @@ type UpstreamStatus string
 
 // Status enum
 const (
-	UpstreamInit        UpstreamStatus = "init"
+	UpstreamInit UpstreamStatus = "init"
+
 	UpstreamWorking     UpstreamStatus = "working"
 	UpstreamPaused      UpstreamStatus = "paused"
 	UpstreamUnavailable UpstreamStatus = "unavailable"
@@ -170,34 +179,30 @@ func (upstream *Upstream) Start() (err error) {
 
 // Destory TODO
 func (upstream *Upstream) Destory() (err error) {
+	return upstream.teardown(UpstreamRemoving)
+}
+
+func (upstream *Upstream) teardown(status UpstreamStatus) (err error) {
 	upstream.Lock()
 	defer upstream.Unlock()
 
-	if upstream.qtask == nil {
+	if upstream.qtask == nil ||
+		stopUpstreamStatus(upstream.status) {
 		return
 	}
-	err = upstream.setStatus(UpstreamRemoving)
+
+	err = upstream.setStatus(status)
 	if err == nil {
 		go upstream.qtask.Stop()
 	}
 
 	return
+
 }
 
 // Stop TODO
 func (upstream *Upstream) Stop() (err error) {
-	upstream.Lock()
-	defer upstream.Unlock()
-
-	if upstream.qtask == nil {
-		return
-	}
-	err = upstream.setStatus(UpstreamStopping)
-	if err == nil {
-		go upstream.qtask.Stop()
-	}
-
-	return
+	return upstream.teardown(UpstreamStopping)
 }
 
 // Info TODO
@@ -234,11 +239,4 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 		"total":     total,
 		"upstreams": l,
 	}
-}
-
-// GetRequest TODO
-func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-	return mgr.queueBox.GetRequest(qid)
 }

@@ -22,7 +22,7 @@ type QueueUpstreams struct {
 type QueueBox struct {
 	hub            *Hub
 	queueUpstreams QueueUpstreamsMap
-	locker         *sync.RWMutex
+	*sync.RWMutex
 }
 
 // NewQueueBox TODO

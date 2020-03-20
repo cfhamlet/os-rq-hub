@@ -6,6 +6,7 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
 // UpstreamManager TODO
@@ -258,4 +259,11 @@ func (mgr *UpstreamManager) Info() (result Result) {
 	result = Result{"status": st}
 	result["queues"] = len(mgr.queueBox.queueUpstreams)
 	return
+}
+
+// GetRequest TODO
+func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	return mgr.queueBox.GetRequest(qid)
 }
