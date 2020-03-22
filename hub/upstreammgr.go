@@ -6,6 +6,7 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
@@ -17,13 +18,6 @@ type UpstreamManager struct {
 	queueBox        *QueueBox
 	waitStop        *sync.WaitGroup
 	*sync.RWMutex
-}
-
-func fromUpstreamStoreMeta(store *UpstreamStoreMeta) (meta *UpstreamMeta) {
-	return &UpstreamMeta{
-		ID:  store.ID,
-		API: store.API,
-	}
 }
 
 // NewUpstreamManager TODO
@@ -79,61 +73,52 @@ func (mgr *UpstreamManager) LoadUpstreams() (err error) {
 	defer mgr.Unlock()
 
 	log.Logger.Debug("load upstreams start")
-	var cursor uint64
-	for {
-		err = mgr.hub.setStatus(Preparing)
-		if err != nil {
-			return
-		}
 
-		var keys []string
-		keys, cursor, err = mgr.hub.Client.HScan(RedisUpstreamsKey, cursor, "*", 1000).Result()
-		if err == nil {
-			err = mgr.loadUpstreams(keys)
-		}
-		if err != nil {
+	scanner := utils.NewScanner(mgr.hub.Client, "hscan", RedisUpstreamsKey, "*", 1000)
+	err = scanner.Scan(
+		func(keys []string) (err error) {
+			isKey := true
+			for _, key := range keys {
+				if isKey {
+					isKey = !isKey
+					continue
+				}
+				isKey = !isKey
+
+				metaStore := NewUpstreamStoreMeta(nil)
+				err = json.Unmarshal([]byte(key), metaStore)
+				if err != nil {
+					log.Logger.Warning("invalid meta", key, err)
+					continue
+				}
+				var upstream *Upstream
+				upstream, err = mgr.addUpstream(metaStore)
+				if err != nil {
+					break
+				}
+				log.Logger.Infof("load upstream %s %s", upstream.ID, upstream.Status())
+			}
 			return
-		}
-		log.Logger.Debugf("loading upstreams %d", len(mgr.upstreams))
-		if cursor == 0 {
-			break
-		}
+		},
+	)
+
+	if err == nil {
+		log.Logger.Debugf("loading upstreams finish %d", len(mgr.upstreams))
+	} else {
+		log.Logger.Errorf("loading upstreams finish %d, %s", len(mgr.upstreams), err)
 	}
-	log.Logger.Debugf("loading upstreams finish %d", len(mgr.upstreams))
 
 	return
 }
 
-func (mgr *UpstreamManager) loadUpstreams(ukeys []string) (err error) {
-	for _, u := range ukeys {
-		err = mgr.hub.setStatus(Preparing)
-		if err != nil {
-			break
-		}
-		var s string
-		s, err = mgr.hub.Client.HGet(RedisUpstreamsKey, u).Result()
-		if err != nil {
-			break
-		}
-		meta := &UpstreamStoreMeta{}
-		err = json.Unmarshal([]byte(s), meta)
-		if err != nil {
-			log.Logger.Warning("invalid meta %s", s)
-		} else {
-			status := meta.Status
-			mgr.addUpstream(fromUpstreamStoreMeta(meta), status)
-		}
-	}
-	return
-}
-
-func (mgr *UpstreamManager) addUpstream(meta *UpstreamMeta, status UpstreamStatus) (err error) {
-	_, ok := mgr.upstreams[meta.ID]
+func (mgr *UpstreamManager) addUpstream(metaStore *UpstreamStoreMeta) (upstream *Upstream, err error) {
+	_, ok := mgr.upstreams[metaStore.ID]
 	if ok {
-		return ExistError(meta.ID)
+		err = ExistError(metaStore.ID)
+		return
 	}
-	upstream := NewUpstream(mgr, meta)
-	err = upstream.setStatus(status)
+	upstream = NewUpstream(mgr, metaStore.UpstreamMeta)
+	err = upstream.setStatus(metaStore.Status)
 	return
 }
 
@@ -149,12 +134,13 @@ func (mgr *UpstreamManager) mustExist(id UpstreamID, f CallByUpstream) (result R
 	return f(upstream)
 }
 
-func (mgr *UpstreamManager) withLock(id UpstreamID, f CallByUpstream) (Result, error) {
+func (mgr *UpstreamManager) withLockMustExist(id UpstreamID, f CallByUpstream) (Result, error) {
 	mgr.Lock()
 	defer mgr.Unlock()
 	return mgr.mustExist(id, f)
 }
-func (mgr *UpstreamManager) withRLock(id UpstreamID, f CallByUpstream) (Result, error) {
+
+func (mgr *UpstreamManager) withRLockMustExist(id UpstreamID, f CallByUpstream) (Result, error) {
 	mgr.RLock()
 	defer mgr.RUnlock()
 	return mgr.mustExist(id, f)
@@ -175,10 +161,11 @@ func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (Result, error) {
 	)
 }
 
-func (mgr *UpstreamManager) setStatus(id UpstreamID, status UpstreamStatus) (Result, error) {
-	return mgr.withLock(id,
+// SetStatus TODO
+func (mgr *UpstreamManager) SetStatus(id UpstreamID, status UpstreamStatus) (Result, error) {
+	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			err = upstream.setStatus(status)
+			err = upstream.SetStatus(status)
 			if err == nil {
 				result = upstream.Info()
 			}
@@ -189,7 +176,7 @@ func (mgr *UpstreamManager) setStatus(id UpstreamID, status UpstreamStatus) (Res
 
 // ResumeUpstream TODO
 func (mgr *UpstreamManager) ResumeUpstream(id UpstreamID) (result Result, err error) {
-	return mgr.withLock(id,
+	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			err = upstream.setStatus(UpstreamWorking)
 			if err == nil {
@@ -202,7 +189,7 @@ func (mgr *UpstreamManager) ResumeUpstream(id UpstreamID) (result Result, err er
 
 // PauseUpstream TODO
 func (mgr *UpstreamManager) PauseUpstream(id UpstreamID) (result Result, err error) {
-	return mgr.withLock(id,
+	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			err = upstream.setStatus(UpstreamPaused)
 			if err == nil {
@@ -215,7 +202,7 @@ func (mgr *UpstreamManager) PauseUpstream(id UpstreamID) (result Result, err err
 
 // DeleteUpstream TODO
 func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
-	return mgr.withLock(id,
+	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			err = upstream.Destory()
 			if err == nil {
@@ -228,7 +215,7 @@ func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err er
 
 // UpstreamInfo TODO
 func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result Result, err error) {
-	return mgr.withRLock(id,
+	return mgr.withRLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			result = upstream.Info()
 			return
@@ -237,12 +224,12 @@ func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result Result, err erro
 }
 
 // AddUpstream TODO
-func (mgr *UpstreamManager) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
+func (mgr *UpstreamManager) AddUpstream(metaStore *UpstreamStoreMeta) (result Result, err error) {
 	mgr.Lock()
 	defer mgr.Unlock()
-	err = mgr.addUpstream(meta, UpstreamWorking)
+	_, err = mgr.addUpstream(metaStore)
 	if err == nil {
-		result, err = mgr.startUpstream(meta.ID)
+		result, err = mgr.startUpstream(metaStore.ID)
 	}
 	return
 }

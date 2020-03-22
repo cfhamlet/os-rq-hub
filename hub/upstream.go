@@ -3,7 +3,9 @@ package hub
 import (
 	"sync"
 
+	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/go-redis/redis/v7"
 	"github.com/segmentio/fasthash/fnv1a"
 )
 
@@ -59,7 +61,7 @@ var UpstreamStatusList = []UpstreamStatus{
 // UpstreamStoreMeta TODO
 type UpstreamStoreMeta struct {
 	*UpstreamMeta
-	Status UpstreamStatus `json:"status" binding:"required"`
+	Status UpstreamStatus `json:"status"`
 }
 
 // UpstreamMeta TODO
@@ -92,20 +94,30 @@ func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
 	return upstream
 }
 
-func (upstream *Upstream) setStatus(status UpstreamStatus) (err error) {
+func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
+	var metaJSON []byte
+	metaJSON, err = json.Marshal(meta)
+	if err == nil {
+		_, err = client.HSet(RedisUpstreamsKey, string(meta.ID), string(metaJSON)).Result()
+	}
+	return
+}
 
-	if upstream.status == status {
+func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
+
+	oldStatus := upstream.status
+	if oldStatus == newStatus {
 		return
 	}
 	e := UnavailableError(upstream.status)
-	switch upstream.status {
+	switch oldStatus {
 	case UpstreamInit:
 	case UpstreamUnavailable:
 		fallthrough
 	case UpstreamWorking:
 		fallthrough
 	case UpstreamPaused:
-		switch status {
+		switch newStatus {
 		case UpstreamInit:
 			fallthrough
 		case UpstreamStopped:
@@ -114,13 +126,13 @@ func (upstream *Upstream) setStatus(status UpstreamStatus) (err error) {
 			err = e
 		}
 	case UpstreamStopping:
-		switch status {
+		switch newStatus {
 		case UpstreamStopped:
 		default:
 			err = e
 		}
 	case UpstreamRemoving:
-		switch status {
+		switch newStatus {
 		case UpstreamRemoved:
 		default:
 			err = e
@@ -136,20 +148,36 @@ func (upstream *Upstream) setStatus(status UpstreamStatus) (err error) {
 	}
 
 	mgr := upstream.mgr
-
-	if upstream.status == UpstreamInit && status != UpstreamRemoved {
-		mgr.upstreams[upstream.ID] = upstream
+	if workUpstreamStatus(newStatus) && newStatus != UpstreamUnavailable {
+		metaStore := NewUpstreamStoreMeta(upstream)
+		metaStore.Status = newStatus
+		err = saveMeta(mgr.hub.Client, metaStore)
+		if err != nil {
+			return
+		}
 	}
+
+	upstream.status = newStatus
 	mgr.statusUpstreams[upstream.status].Delete(upstream)
-	if status != UpstreamRemoved {
-		mgr.statusUpstreams[status].Add(upstream)
+	if newStatus != UpstreamRemoved {
+		mgr.upstreams[upstream.ID] = upstream
+		mgr.statusUpstreams[newStatus].Add(upstream)
 	} else {
 		delete(mgr.upstreams, upstream.ID)
 	}
 
-	upstream.status = status
-
 	return
+}
+
+// NewUpstreamStoreMeta TODO
+func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
+	if upstream == nil {
+		return &UpstreamStoreMeta{}
+	}
+	return &UpstreamStoreMeta{
+		&UpstreamMeta{upstream.ID, upstream.API},
+		upstream.Status(),
+	}
 }
 
 // ItemID TODO
@@ -239,4 +267,18 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 		"total":     total,
 		"upstreams": l,
 	}
+}
+
+// Status TODO
+func (upstream *Upstream) Status() UpstreamStatus {
+	upstream.RLock()
+	defer upstream.RUnlock()
+	return upstream.status
+}
+
+// SetStatus TODO
+func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
+	upstream.Lock()
+	defer upstream.Unlock()
+	return upstream.setStatus(newStatus)
 }

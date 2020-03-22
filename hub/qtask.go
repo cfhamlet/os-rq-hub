@@ -79,10 +79,10 @@ Done:
 
 func (task *UpdateQueuesTask) clear() {
 	if task.upstream.status == UpstreamRemoving {
-		result, err := task.upstream.mgr.setStatus(task.upstream.ID, UpstreamRemoved)
+		result, err := task.upstream.mgr.SetStatus(task.upstream.ID, UpstreamRemoved)
 		log.Logger.Infof("delete upstream %v %v", result, err)
 	} else if task.upstream.status == UpstreamStopping {
-		result, err := task.upstream.mgr.setStatus(task.upstream.ID, UpstreamStopped)
+		result, err := task.upstream.mgr.SetStatus(task.upstream.ID, UpstreamStopped)
 		log.Logger.Infof("stop upstream %v %v", result, err)
 	}
 }
