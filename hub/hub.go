@@ -292,10 +292,11 @@ func (hub *Hub) DeleteUpstream(id UpstreamID) (result Result, err error) {
 }
 
 // AddUpstream TODO
-func (hub *Hub) AddUpstream(meta *UpstreamMeta) (result Result, err error) {
+func (hub *Hub) AddUpstream(metaStore *UpstreamStoreMeta) (Result, error) {
 	return hub.withRLockOnWorkStatus(
 		func() (Result, error) {
-			return hub.upstreamMgr.AddUpstream(meta)
+			metaStore.Status = UpstreamWorking
+			return hub.upstreamMgr.AddUpstream(metaStore)
 		},
 	)
 }
