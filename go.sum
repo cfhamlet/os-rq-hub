@@ -14,6 +14,8 @@ github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+Ce
 github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
 github.com/cfhamlet/os-rq-pod v0.0.12 h1:WzG9KBXCDfy6neX5uKnBbyzuKO6FYkDGazDY7j22bE0=
 github.com/cfhamlet/os-rq-pod v0.0.12/go.mod h1:7IHdNaro1ZDmK3PcZMKeoPpKsWX63wxAYJlfP20O1Iw=
+github.com/cfhamlet/os-rq-pod v0.0.14 h1:jKGuNudFSzE+FMdMPB61ObtyENANxG+gm6Je67fd3V4=
+github.com/cfhamlet/os-rq-pod v0.0.14/go.mod h1:7IHdNaro1ZDmK3PcZMKeoPpKsWX63wxAYJlfP20O1Iw=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
