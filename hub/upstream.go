@@ -92,6 +92,8 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 		switch newStatus {
 		case UpstreamInit:
 			fallthrough
+		case UpstreamUnavailable:
+			fallthrough
 		case UpstreamStopped:
 			fallthrough
 		case UpstreamRemoved:
@@ -203,7 +205,6 @@ func (upstream *Upstream) teardown(status UpstreamStatus) (err error) {
 	}
 
 	return
-
 }
 
 // Stop TODO
@@ -219,31 +220,6 @@ func (upstream *Upstream) Info() (result Result) {
 		"id":     upstream.ID,
 		"status": utils.Text(upstream.status),
 		"queues": upstream.queueIDs.Size(),
-	}
-}
-
-// Queues TODO
-func (mgr *UpstreamManager) Queues(k int) (result Result) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-
-	upstreams := mgr.statusUpstreams[UpstreamWorking]
-	l := upstreams.Size()
-	total := len(mgr.queueBox.queueUpstreams)
-	var selector QueuesSelector
-	if l <= 0 {
-		selector = emptySelector
-	} else if total <= k {
-		selector = NewAllSelector(mgr)
-	} else {
-		selector = NewRandSelector(mgr, k)
-	}
-	out := selector.Select()
-	return Result{
-		"k":         k,
-		"queues":    out,
-		"total":     total,
-		"upstreams": l,
 	}
 }
 
