@@ -141,6 +141,9 @@ func (selector *RandSelector) choice(upstream *Upstream, n int) bool {
 
 	iterator, ok := selector.iterators[upstream.ID]
 	l := upstream.queueIDs.Size()
+	if l <= 0 {
+		return true
+	}
 	if !ok {
 		iterator = NewCycleCountIter(upstream.queueIDs, selector.r.Intn(l), n)
 	} else {
