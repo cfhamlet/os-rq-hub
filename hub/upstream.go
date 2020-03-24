@@ -87,7 +87,15 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	case UpstreamUnavailable:
 		fallthrough
 	case UpstreamWorking:
-		fallthrough
+		switch newStatus {
+		case UpstreamUnavailable:
+		case UpstreamInit:
+			fallthrough
+		case UpstreamStopped:
+			fallthrough
+		case UpstreamRemoved:
+			err = e
+		}
 	case UpstreamPaused:
 		switch newStatus {
 		case UpstreamInit:
@@ -138,7 +146,7 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	}
 
 	upstream.status = newStatus
-	mgr.statusUpstreams[upstream.status].Delete(upstream)
+	mgr.statusUpstreams[oldStatus].Delete(upstream)
 	if newStatus != UpstreamRemoved {
 		mgr.upstreams[upstream.ID] = upstream
 		mgr.statusUpstreams[newStatus].Add(upstream)
