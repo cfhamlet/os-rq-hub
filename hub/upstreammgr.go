@@ -200,6 +200,16 @@ func (mgr *UpstreamManager) PauseUpstream(id UpstreamID) (result Result, err err
 	)
 }
 
+// UpdateStreamQueues TODO
+func (mgr *UpstreamManager) UpdateStreamQueues(id UpstreamID, queues []pod.QueueID) error {
+	_, err := mgr.withLockMustExist(id,
+		func(upstream *Upstream) (result Result, err error) {
+			return
+		},
+	)
+	return err
+}
+
 // DeleteUpstream TODO
 func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
 	return mgr.withLockMustExist(id,
@@ -241,7 +251,7 @@ func (mgr *UpstreamManager) Info() (result Result) {
 
 	st := Result{}
 	for _, status := range UpstreamStatusList {
-		st[string(status)] = mgr.statusUpstreams[status].Size()
+		st[utils.Text(status)] = mgr.statusUpstreams[status].Size()
 	}
 	result = Result{"status": st}
 	result["queues"] = len(mgr.queueBox.queueUpstreams)

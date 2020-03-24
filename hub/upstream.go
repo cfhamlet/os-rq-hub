@@ -5,6 +5,7 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/go-redis/redis/v7"
 	"github.com/segmentio/fasthash/fnv1a"
 )
@@ -216,7 +217,7 @@ func (upstream *Upstream) Info() (result Result) {
 	defer upstream.RUnlock()
 	return Result{
 		"id":     upstream.ID,
-		"status": upstream.status,
+		"status": utils.Text(upstream.status),
 		"queues": upstream.queueIDs.Size(),
 	}
 }

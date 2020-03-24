@@ -161,7 +161,11 @@ func (hub *Hub) OnStop() (err error) {
 		hub.waitStop.Wait()
 		err = hub.setStatus(Stopped)
 	}
-	log.Logger.Info("hub stopped")
+	if err == nil {
+		log.Logger.Info("hub stopped")
+	} else {
+		log.Logger.Errorf("hub stopped fail %s", err)
+	}
 	return
 }
 
@@ -193,7 +197,7 @@ func (hub *Hub) Pause() (Result, error) {
 
 func (hub *Hub) metaInfo() Result {
 	return Result{
-		"status": hub.status,
+		"status": utils.Text(hub.status),
 		"process": Result{
 			"memory": utils.MemoryInfo(hub.Process),
 			"cpu": Result{
