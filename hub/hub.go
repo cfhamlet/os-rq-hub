@@ -13,19 +13,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Status typtio
-type Status string
-
-// Status enum
-const (
-	Init      Status = "init"
-	Preparing Status = "preparing"
-	Working   Status = "working"
-	Paused    Status = "paused"
-	Stopping  Status = "stopping"
-	Stopped   Status = "stopped"
-)
-
 // Result TODO
 type Result map[string]interface{}
 
