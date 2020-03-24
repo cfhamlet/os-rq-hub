@@ -2,21 +2,41 @@
 
 package hub
 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+
+	"github.com/cfhamlet/os-rq-pod/pkg/utils"
+)
+
 // UpstreamStatus TODO
 type UpstreamStatus int
 
 // Status enum
 const (
 	_                   UpstreamStatus = iota
-	UpstreamInit                       // "init"
-	UpstreamWorking                    // = "working"
-	UpstreamPaused                     // = "paused"
-	UpstreamUnavailable                // = "unavailable"
-	UpstreamStopping                   // = "stopping"
-	UpstreamStopped                    // = "stopped"
-	UpstreamRemoving                   // = "removing"
-	UpstreamRemoved                    // = "removed"
+	UpstreamInit                       // init
+	UpstreamWorking                    // working
+	UpstreamPaused                     // paused
+	UpstreamUnavailable                // unavailable
+	UpstreamStopping                   // stopping
+	UpstreamStopped                    // stopped
+	UpstreamRemoving                   // removing
+	UpstreamRemoved                    // removed
 )
+
+// UpstreamStatusMap TODO
+var UpstreamStatusMap = map[string]UpstreamStatus{
+	utils.Text(UpstreamInit):        UpstreamInit,
+	utils.Text(UpstreamWorking):     UpstreamWorking,
+	utils.Text(UpstreamPaused):      UpstreamPaused,
+	utils.Text(UpstreamUnavailable): UpstreamUnavailable,
+	utils.Text(UpstreamStopping):    UpstreamStopping,
+	utils.Text(UpstreamStopped):     UpstreamStopped,
+	utils.Text(UpstreamRemoving):    UpstreamRemoving,
+	utils.Text(UpstreamRemoved):     UpstreamRemoved,
+}
 
 // UpstreamStatusList TODO
 var UpstreamStatusList = []UpstreamStatus{
@@ -28,4 +48,29 @@ var UpstreamStatusList = []UpstreamStatus{
 	UpstreamStopped,
 	UpstreamRemoving,
 	UpstreamRemoved,
+}
+
+// MarshalJSON TODO
+func (s UpstreamStatus) MarshalJSON() ([]byte, error) {
+	buffer := bytes.NewBufferString(`"`)
+	buffer.WriteString(utils.Text(s))
+	buffer.WriteString(`"`)
+	return buffer.Bytes(), nil
+}
+
+// UnmarshalJSON unmashals a quoted json string to the enum value
+func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
+	var j string
+	err := json.Unmarshal(b, &j)
+	if err != nil {
+		return err
+	}
+
+	t, ok := UpstreamStatusMap[j]
+	if !ok {
+		return fmt.Errorf(`invalid UpstreamStatus value '%s'`, j)
+	}
+
+	*s = *&t
+	return nil
 }
