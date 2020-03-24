@@ -2,7 +2,10 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
@@ -36,8 +39,9 @@ func (c *StopCtx) Stop() {
 type UpdateQueuesTask struct {
 	upstream   *Upstream
 	operations []operate
-	hardStop   *StopCtx
-	softStop   *StopCtx
+	quickStop  *StopCtx
+	waitStop   *StopCtx
+	client     *http.Client
 }
 
 // NewUpdateQueuesTask TODO
@@ -47,16 +51,67 @@ func NewUpdateQueuesTask(upstream *Upstream) *UpdateQueuesTask {
 		[]operate{},
 		NewStopCtx(),
 		NewStopCtx(),
+		&http.Client{},
 	}
 }
 
+func (task *UpdateQueuesTask) getQueues() (result Result, err error) {
+	upstream := task.upstream
+	status := upstream.Status()
+	if status == UpstreamPaused {
+		log.Logger.Warningf("upstream %s paused", upstream.ID)
+		return
+	}
+	req, err := http.NewRequestWithContext(
+		task.waitStop.ctx,
+		"POST",
+		upstream.API,
+		nil,
+	)
+	if err != nil {
+		log.Logger.Errorf("upstream %s new request %s", upstream.ID, err)
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		return
+	}
+
+	resp, err := task.client.Do(req)
+	if err != nil {
+		log.Logger.Errorf("upstream %s response %s", upstream.ID, err)
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Logger.Errorf("upstream %s code %d", upstream.ID, resp.StatusCode)
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		return
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Logger.Errorf("upstream %s read %s", upstream.ID, err)
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		return
+	}
+
+	result = Result{}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		log.Logger.Errorf("upstream %s parse %s", upstream.ID, err)
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		return
+	}
+	return
+}
+
 func (task *UpdateQueuesTask) updateQueues() {
-	fmt.Println(task.upstream.ID)
+	result, err := task.getQueues()
+	fmt.Println(result, err)
 }
 
 func (task *UpdateQueuesTask) sleep() {
 	select {
-	case <-task.hardStop.Done():
+	case <-task.quickStop.Done():
 	case <-time.After(time.Second):
 	}
 }
@@ -75,7 +130,7 @@ func (task *UpdateQueuesTask) run() {
 	}
 Done:
 	task.clear()
-	task.softStop.Stop()
+	task.waitStop.Stop()
 }
 
 func (task *UpdateQueuesTask) clear() {
@@ -86,7 +141,7 @@ func (task *UpdateQueuesTask) clear() {
 		status = UpstreamRemoved
 	}
 	result, err := task.upstream.mgr.SetStatus(task.upstream.ID, status)
-	log.Logger.Infof("%s upstream %v %v", opt, result, err)
+	log.Logger.Infof("upstream %s %s %v %v", task.upstream.ID, opt, result, err)
 }
 
 // Start TODO
@@ -103,10 +158,10 @@ func (task *UpdateQueuesTask) Start() {
 
 // Stop TODO
 func (task *UpdateQueuesTask) Stop() {
-	task.hardStop.Stop()
+	task.quickStop.Stop()
 	select {
-	case <-task.softStop.Done():
+	case <-task.waitStop.Done():
 	case <-time.After(time.Second * 10):
-		task.softStop.Stop()
+		task.waitStop.Stop()
 	}
 }
