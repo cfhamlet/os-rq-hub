@@ -14,8 +14,8 @@ type QueueUpstreamsMap map[pod.QueueID]QueueUpstreams
 
 // QueueUpstreams TODO
 type QueueUpstreams struct {
-	queue   *Queue
-	streams UpstreamMap
+	queue     *Queue
+	upStreams UpstreamMap
 }
 
 // QueueBox TODO

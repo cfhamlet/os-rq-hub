@@ -16,6 +16,8 @@ github.com/cfhamlet/os-rq-pod v0.0.15 h1:SngSl/+3790JAvdnSDL8aYquQjs/D2/vH8O3BhU
 github.com/cfhamlet/os-rq-pod v0.0.15/go.mod h1:bSImWcEltI/2MVy+Fnl41dmq42SqGi02NHfYVUV7KyQ=
 github.com/cfhamlet/os-rq-pod v0.0.16 h1:IU2rmu6ga6EDBVh+ADRdvR3e2HlumQ8fPYfsF7F9Kko=
 github.com/cfhamlet/os-rq-pod v0.0.16/go.mod h1:bSImWcEltI/2MVy+Fnl41dmq42SqGi02NHfYVUV7KyQ=
+github.com/cfhamlet/os-rq-pod v0.0.17 h1:jX+ovIacfWkNhFs90kbs7ud9hmwKumTdTSOPCfDWOoo=
+github.com/cfhamlet/os-rq-pod v0.0.17/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
@@ -165,6 +167,8 @@ github.com/ugorji/go v1.1.7 h1:/68gy2h+1mWMrwZFeD1kQialdSzAb432dtpeJ42ovdo=
 github.com/ugorji/go v1.1.7/go.mod h1:kZn38zHttfInRq0xu/PH0az30d+z6vm202qpg1oXVMw=
 github.com/ugorji/go/codec v1.1.7 h1:2SvQaVZ1ouYrrKKwoSk2pzd4A9evlKJb9oTL+OaLUSs=
 github.com/ugorji/go/codec v1.1.7/go.mod h1:Ax+UKWsSmolVDwsd+7N3ZtXu+yMGCf907BLYF3GoBXY=
+github.com/vardius/message-bus v1.1.4 h1:qJnTHJ8AvhbVndSMlCYbnHhxFX180Vf25okxe4pKSaU=
+github.com/vardius/message-bus v1.1.4/go.mod h1:6xladCV2lMkUAE4bzzS85qKOiB5miV7aBVRafiTJGqw=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
