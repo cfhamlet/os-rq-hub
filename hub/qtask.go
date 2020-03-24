@@ -63,6 +63,8 @@ func (task *UpdateQueuesTask) sleep() {
 
 func (task *UpdateQueuesTask) run() {
 	task.upstream.mgr.waitStop.Add(1)
+	defer task.upstream.mgr.waitStop.Done()
+
 	for {
 		for _, call := range task.operations {
 			if stopUpstreamStatus(task.upstream.status) {
@@ -74,17 +76,17 @@ func (task *UpdateQueuesTask) run() {
 Done:
 	task.clear()
 	task.softStop.Stop()
-	task.upstream.mgr.waitStop.Done()
 }
 
 func (task *UpdateQueuesTask) clear() {
+	opt := "stop"
+	status := UpstreamStopped
 	if task.upstream.status == UpstreamRemoving {
-		result, err := task.upstream.mgr.SetStatus(task.upstream.ID, UpstreamRemoved)
-		log.Logger.Infof("delete upstream %v %v", result, err)
-	} else if task.upstream.status == UpstreamStopping {
-		result, err := task.upstream.mgr.SetStatus(task.upstream.ID, UpstreamStopped)
-		log.Logger.Infof("stop upstream %v %v", result, err)
+		opt = "delete"
+		status = UpstreamRemoved
 	}
+	result, err := task.upstream.mgr.SetStatus(task.upstream.ID, status)
+	log.Logger.Infof("%s upstream %v %v", opt, result, err)
 }
 
 // Start TODO
