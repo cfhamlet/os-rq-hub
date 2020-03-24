@@ -6,6 +6,7 @@ import (
 
 	core "github.com/cfhamlet/os-rq-hub/hub"
 	ctrl "github.com/cfhamlet/os-rq-pod/app/controller"
+	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -85,12 +86,18 @@ func UpstreamInfo(c *gin.Context, hub *core.Hub) (core.Result, error) {
 }
 
 // Upstreams TODO
-func Upstreams(c *gin.Context, hub *core.Hub) (core.Result, error) {
-	return nil, nil
+func Upstreams(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
+	qs := c.DefaultQuery("status", utils.Text(core.UpstreamWorking))
+	status, ok := core.UpstreamStatusMap[qs]
+	if !ok {
+		err = ctrl.InvalidQuery(fmt.Sprintf(`invalid status '%s'`, qs))
+		return
+	}
+	return hub.Upstreams(status)
 }
 
 // DownstreamInfo TODO
-func DownstreamInfo(c *gin.Context, hub *core.Hub) (core.Result, error) {
+func DownstreamInfo(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
 	return nil, nil
 }
 

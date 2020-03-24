@@ -297,7 +297,7 @@ func (hub *Hub) GetRequest(qid pod.QueueID) (Result, error) {
 	return hub.withRLockOnWorkStatus(
 		func() (result Result, err error) {
 			if hub.status != Working {
-				err = UnavailableError(hub.status)
+				err = UnavailableError(utils.Text(hub.status))
 				return
 			}
 			return hub.downstreamMgr.GetRequest(qid)
@@ -305,20 +305,22 @@ func (hub *Hub) GetRequest(qid pod.QueueID) (Result, error) {
 	)
 }
 
-func (hub *Hub) setStatus(status Status) (err error) {
-	if hub.status == status {
+func (hub *Hub) setStatus(newStatus Status) (err error) {
+	oldStatus := hub.status
+
+	if oldStatus == newStatus {
 		return
 	}
-	e := UnavailableError(status)
+	e := UnavailableError(utils.Text(oldStatus))
 	switch hub.status {
 	case Init:
-		switch status {
+		switch newStatus {
 		case Preparing:
 		default:
 			err = e
 		}
 	case Preparing:
-		switch status {
+		switch newStatus {
 		case Working:
 			fallthrough
 		case Paused:
@@ -328,7 +330,7 @@ func (hub *Hub) setStatus(status Status) (err error) {
 			err = e
 		}
 	case Working:
-		switch status {
+		switch newStatus {
 		case Paused:
 			fallthrough
 		case Stopping:
@@ -336,7 +338,7 @@ func (hub *Hub) setStatus(status Status) (err error) {
 			err = e
 		}
 	case Paused:
-		switch status {
+		switch newStatus {
 		case Working:
 			fallthrough
 		case Stopping:
@@ -344,7 +346,7 @@ func (hub *Hub) setStatus(status Status) (err error) {
 			err = e
 		}
 	case Stopping:
-		switch status {
+		switch newStatus {
 		case Stopped:
 		default:
 			err = e
@@ -353,7 +355,14 @@ func (hub *Hub) setStatus(status Status) (err error) {
 		err = e
 	}
 	if err == nil {
-		hub.status = status
+		hub.status = newStatus
 	}
 	return
+}
+
+// Upstreams TODO
+func (hub *Hub) Upstreams(status UpstreamStatus) (Result, error) {
+	hub.RLock()
+	defer hub.RUnlock()
+	return hub.upstreamMgr.Upstreams(status)
 }

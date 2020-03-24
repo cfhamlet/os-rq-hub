@@ -149,6 +149,9 @@ func (mgr *UpstreamManager) withRLockMustExist(id UpstreamID, f CallByUpstream) 
 func (mgr *UpstreamManager) startUpstream(id UpstreamID) (Result, error) {
 	return mgr.mustExist(id, func(upstream *Upstream) (result Result, err error) {
 		err = upstream.Start()
+		if err == nil {
+			result = upstream.Info()
+		}
 		return
 	},
 	)
@@ -263,4 +266,50 @@ func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
 	mgr.RLock()
 	defer mgr.RUnlock()
 	return mgr.queueBox.GetRequest(qid)
+}
+
+// Queues TODO
+func (mgr *UpstreamManager) Queues(k int) (result Result) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+
+	upstreams := mgr.statusUpstreams[UpstreamWorking]
+	l := upstreams.Size()
+	total := len(mgr.queueBox.queueUpstreams)
+	var selector QueuesSelector
+	if l <= 0 {
+		selector = emptySelector
+	} else if total <= k {
+		selector = NewAllSelector(mgr)
+	} else {
+		selector = NewRandSelector(mgr, k)
+	}
+	out := selector.Select()
+	return Result{
+		"k":         k,
+		"queues":    out,
+		"total":     total,
+		"upstreams": l,
+	}
+}
+
+// Upstreams TODO
+func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	upstreams := mgr.statusUpstreams[status]
+	iter := slicemap.NewFastIter(upstreams)
+	result = Result{
+		"status": utils.Text(status),
+		"total":  upstreams.Size(),
+	}
+	out := []*UpstreamStoreMeta{}
+	iter.Iter(func(item slicemap.Item) {
+		u := item.(*Upstream)
+		m := NewUpstreamStoreMeta(u)
+		out = append(out, m)
+	},
+	)
+	result["upstreams"] = out
+	return
 }
