@@ -133,7 +133,6 @@ func (selector *RandSelector) Select() []Result {
 			i--
 			l--
 		}
-
 	}
 	return selector.out
 }
