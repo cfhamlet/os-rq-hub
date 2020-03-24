@@ -58,7 +58,7 @@ func (s UpstreamStatus) MarshalJSON() ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// UnmarshalJSON unmashals a quoted json string to the enum value
+// UnmarshalJSON TODO
 func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
 	var j string
 	err := json.Unmarshal(b, &j)
@@ -71,6 +71,6 @@ func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf(`invalid UpstreamStatus value '%s'`, j)
 	}
 
-	*s = *&t
+	*s = t
 	return nil
 }

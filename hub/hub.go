@@ -197,7 +197,7 @@ func (hub *Hub) Pause() (Result, error) {
 
 func (hub *Hub) metaInfo() Result {
 	return Result{
-		"status": utils.Text(hub.status),
+		"status": hub.status,
 		"process": Result{
 			"memory": utils.MemoryInfo(hub.Process),
 			"cpu": Result{
