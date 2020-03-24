@@ -29,35 +29,6 @@ func stopUpstreamStatus(status UpstreamStatus) bool {
 		status == UpstreamRemoved
 }
 
-// UpstreamStatus TODO
-type UpstreamStatus string
-
-// Status enum
-const (
-	UpstreamInit UpstreamStatus = "init"
-
-	UpstreamWorking     UpstreamStatus = "working"
-	UpstreamPaused      UpstreamStatus = "paused"
-	UpstreamUnavailable UpstreamStatus = "unavailable"
-
-	UpstreamStopping UpstreamStatus = "stopping"
-	UpstreamStopped  UpstreamStatus = "stopped"
-	UpstreamRemoving UpstreamStatus = "removing"
-	UpstreamRemoved  UpstreamStatus = "removed"
-)
-
-// UpstreamStatusList TODO
-var UpstreamStatusList = []UpstreamStatus{
-	UpstreamInit,
-	UpstreamWorking,
-	UpstreamPaused,
-	UpstreamUnavailable,
-	UpstreamStopping,
-	UpstreamStopped,
-	UpstreamRemoving,
-	UpstreamRemoved,
-}
-
 // UpstreamStoreMeta TODO
 type UpstreamStoreMeta struct {
 	*UpstreamMeta
@@ -155,6 +126,12 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 		if err != nil {
 			return
 		}
+	} else if newStatus == UpstreamRemoved {
+		_, err = mgr.hub.Client.HDel(RedisUpstreamsKey, string(upstream.ID)).Result()
+	}
+
+	if err != nil {
+		return
 	}
 
 	upstream.status = newStatus
