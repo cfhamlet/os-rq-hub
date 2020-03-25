@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
+	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
 type operate func()
@@ -55,13 +56,17 @@ func NewUpdateQueuesTask(upstream *Upstream) *UpdateQueuesTask {
 	}
 }
 
-func (task *UpdateQueuesTask) getQueues() (result Result, err error) {
+// APIError TODO
+type APIError struct {
+	reason string
+}
+
+func (e APIError) Error() string {
+	return e.reason
+}
+
+func (task *UpdateQueuesTask) getQueues() (queueIDs []pod.QueueID, err error) {
 	upstream := task.upstream
-	status := upstream.Status()
-	if status == UpstreamPaused {
-		log.Logger.Warningf("upstream %s paused", upstream.ID)
-		return
-	}
 	req, err := http.NewRequestWithContext(
 		task.waitStop.ctx,
 		"POST",
@@ -69,44 +74,81 @@ func (task *UpdateQueuesTask) getQueues() (result Result, err error) {
 		nil,
 	)
 	if err != nil {
-		log.Logger.Errorf("upstream %s new request %s", upstream.ID, err)
-		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		err = APIError{fmt.Sprintf("new request %s", err)}
 		return
 	}
 
 	resp, err := task.client.Do(req)
 	if err != nil {
-		log.Logger.Errorf("upstream %s response %s", upstream.ID, err)
-		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		err = APIError{fmt.Sprintf("response %s", err)}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Logger.Errorf("upstream %s code %d", upstream.ID, resp.StatusCode)
-		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		err = APIError{fmt.Sprintf("http code %s", err)}
 		return
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Logger.Errorf("upstream %s read %s", upstream.ID, err)
-		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		err = APIError{fmt.Sprintf("read %s", err)}
 		return
 	}
 
-	result = Result{}
+	result := Result{}
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		log.Logger.Errorf("upstream %s parse %s", upstream.ID, err)
-		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
 		return
+	}
+	queueIDs, err = queueIDsFromResult(result)
+	return
+}
+
+func queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
+	queueIDs = []pod.QueueID{}
+	qs, ok := result["queues"]
+	if !ok {
+		err = NotExistError(fmt.Sprintf(`"queues" not exist in %s`, result))
+		return
+	}
+	ql := qs.([]interface{})
+	for _, qt := range ql {
+		qr := qt.(map[string]interface{})
+		q, ok := qr["qid"]
+		if !ok {
+			err = NotExistError(fmt.Sprintf(`"queues" not exist in %s`, q))
+			break
+		}
+		s := q.(string)
+		qid, err := pod.QueueIDFromString(s)
+		if err != nil {
+			break
+		}
+		queueIDs = append(queueIDs, qid)
 	}
 	return
 }
 
 func (task *UpdateQueuesTask) updateQueues() {
-	result, err := task.getQueues()
-	fmt.Println(result, err)
+	upstream := task.upstream
+	status := upstream.Status()
+	if status == UpstreamPaused {
+		log.Logger.Warningf("<upstream %s> paused", upstream.ID)
+		return
+	}
+	queueIDs, err := task.getQueues()
+	if err != nil {
+		switch err.(type) {
+		case APIError:
+			_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+		}
+		log.Logger.Errorf("<upstream %s> %s", upstream.ID, err)
+		return
+	} else if len(queueIDs) <= 0 {
+		log.Logger.Warningf("<upstream %s> zero queues %s", upstream.ID)
+		return
+	}
+	fmt.Println(queueIDs, err)
 }
 
 func (task *UpdateQueuesTask) sleep() {
@@ -141,7 +183,7 @@ func (task *UpdateQueuesTask) clear() {
 		status = UpstreamRemoved
 	}
 	result, err := task.upstream.mgr.SetStatus(task.upstream.ID, status)
-	log.Logger.Infof("upstream %s %s %v %v", task.upstream.ID, opt, result, err)
+	log.Logger.Infof("<upstream %s> %s %v %v", task.upstream.ID, opt, result, err)
 }
 
 // Start TODO
