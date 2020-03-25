@@ -112,11 +112,11 @@ func (task *UpdateQueuesTask) getQueues() (queueIDs []pod.QueueID, err error) {
 	if err != nil {
 		return
 	}
-	queueIDs, err = queueIDsFromResult(result)
+	queueIDs, err = task.queueIDsFromResult(result)
 	return
 }
 
-func queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
+func (task *UpdateQueuesTask) queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
 	queueIDs = []pod.QueueID{}
 	qs, ok := result["queues"]
 	if !ok {
@@ -124,7 +124,10 @@ func queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
 		return
 	}
 	ql := qs.([]interface{})
+	total := 0
+	new := 0
 	for _, qt := range ql {
+		total++
 		qr := qt.(map[string]interface{})
 		q, ok := qr["qid"]
 		if !ok {
@@ -136,7 +139,13 @@ func queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
 		if err != nil {
 			break
 		}
-		queueIDs = append(queueIDs, qid)
+		if !task.upstream.ExistQueueID(qid) {
+			new++
+			queueIDs = append(queueIDs, qid)
+		}
+	}
+	if err == nil {
+		log.Logger.Debugf(task.logMsg("parse queues total: %d new: %d", total, new))
 	}
 	return
 }
@@ -166,7 +175,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 		return
 	}
 	var result Result
-	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queueIDs)
+	result, err = upstream.mgr.UpdateUpStreamQueueIDs(upstream.ID, queueIDs)
 	if err != nil {
 		log.Logger.Errorf(task.logMsg("%s", err))
 	} else {

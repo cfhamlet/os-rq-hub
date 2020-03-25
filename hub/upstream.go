@@ -247,8 +247,8 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
 	return upstream.setStatus(newStatus)
 }
 
-// UpdateQueues TODO
-func (upstream *Upstream) UpdateQueues(queueIDs []pod.QueueID) (result Result) {
+// UpdateQueueIDs TODO
+func (upstream *Upstream) UpdateQueueIDs(queueIDs []pod.QueueID) (result Result) {
 	t := time.Now()
 	upstream.Lock()
 	defer upstream.Unlock()
@@ -280,8 +280,33 @@ func (upstream *Upstream) UpdateQueues(queueIDs []pod.QueueID) (result Result) {
 	}
 }
 
-// DeleteQueues TODO
-func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
+// IntersectQueueIDs TODO
+func (upstream *Upstream) IntersectQueueIDs(queueIDs []pod.QueueID) []pod.QueueID {
+	upstream.RLock()
+	defer upstream.RUnlock()
+	out := []pod.QueueID{}
+	for _, qid := range queueIDs {
+		exist := upstream.queueIDs.Get(qid.ItemID())
+		if exist != nil {
+			out = append(out, qid)
+		}
+	}
+	return out
+}
+
+// ExistQueueID TODO
+func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
+	upstream.RLock()
+	defer upstream.RUnlock()
+	q := upstream.queueIDs.Get(qid.ItemID())
+	if q == nil {
+		return false
+	}
+	return true
+}
+
+// DeleteQueueIDs TODO
+func (upstream *Upstream) DeleteQueueIDs(queueIDs []pod.QueueID) (result Result) {
 	t := time.Now()
 	upstream.Lock()
 	defer upstream.Unlock()

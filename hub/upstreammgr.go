@@ -306,21 +306,21 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 	return
 }
 
-// UpdateUpStreamQueues TODO
-func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, queues []pod.QueueID) (Result, error) {
+// UpdateUpStreamQueueIDs TODO
+func (mgr *UpstreamManager) UpdateUpStreamQueueIDs(id UpstreamID, queues []pod.QueueID) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.UpdateQueues(queues)
+			result = upstream.UpdateQueueIDs(queues)
 			return
 		},
 	)
 }
 
-// DeleteUpstreamQueues TODO
-func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queues []pod.QueueID) (Result, error) {
+// DeleteUpstreamQueueIDs TODO
+func (mgr *UpstreamManager) DeleteUpstreamQueueIDs(id UpstreamID, queues []pod.QueueID) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.DeleteQueues(queues)
+			result = upstream.DeleteQueueIDs(queues)
 			return
 		},
 	)
