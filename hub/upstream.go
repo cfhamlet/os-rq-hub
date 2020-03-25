@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
+	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/cfhamlet/os-rq-pod/pod"
@@ -47,10 +48,10 @@ type UpstreamMeta struct {
 // Upstream TODO
 type Upstream struct {
 	*UpstreamMeta
-	status   UpstreamStatus
-	mgr      *UpstreamManager
-	queueIDs *slicemap.Map
-	qtask    *UpdateQueuesTask
+	status UpstreamStatus
+	mgr    *UpstreamManager
+	queues *slicemap.Map
+	qtask  *UpdateQueuesTask
 	*sync.RWMutex
 }
 
@@ -83,14 +84,13 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	if oldStatus == newStatus {
 		return
 	}
-	e := UnavailableError(upstream.status)
+	e := UnavailableError(oldStatus)
 	switch oldStatus {
 	case UpstreamInit:
 	case UpstreamUnavailable:
 		fallthrough
 	case UpstreamWorking:
 		switch newStatus {
-		case UpstreamUnavailable:
 		case UpstreamInit:
 			fallthrough
 		case UpstreamStopped:
@@ -132,7 +132,9 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	}
 
 	mgr := upstream.mgr
-	if workUpstreamStatus(newStatus) && newStatus != UpstreamUnavailable {
+	if workUpstreamStatus(newStatus) &&
+		newStatus != UpstreamUnavailable &&
+		oldStatus != UpstreamUnavailable {
 		metaStore := NewUpstreamStoreMeta(upstream)
 		metaStore.Status = newStatus
 		err = saveMeta(mgr.hub.Client, metaStore)
@@ -148,7 +150,7 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	}
 
 	upstream.status = newStatus
-	mgr.statusUpstreams[oldStatus].Delete(upstream)
+	mgr.statusUpstreams[oldStatus].Delete(upstream.ItemID())
 	if newStatus != UpstreamRemoved {
 		mgr.upstreams[upstream.ID] = upstream
 		mgr.statusUpstreams[newStatus].Add(upstream)
@@ -166,7 +168,7 @@ func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
 	}
 	return &UpstreamStoreMeta{
 		&UpstreamMeta{upstream.ID, upstream.API},
-		upstream.Status(),
+		upstream.status,
 	}
 }
 
@@ -222,15 +224,20 @@ func (upstream *Upstream) Stop() (err error) {
 	return upstream.teardown(UpstreamStopping)
 }
 
+func (upstream *Upstream) info() (result Result) {
+	return Result{
+		"id":         upstream.ID,
+		"status":     upstream.status,
+		"queues":     upstream.queues.Size(),
+		"queues_all": len(upstream.mgr.queueUpstreams),
+	}
+}
+
 // Info TODO
 func (upstream *Upstream) Info() (result Result) {
 	upstream.RLock()
 	defer upstream.RUnlock()
-	return Result{
-		"id":     upstream.ID,
-		"status": upstream.status,
-		"queues": upstream.queueIDs.Size(),
-	}
+	return upstream.info()
 }
 
 // Status TODO
@@ -247,37 +254,34 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
 	return upstream.setStatus(newStatus)
 }
 
-// UpdateQueueIDs TODO
-func (upstream *Upstream) UpdateQueueIDs(queueIDs []pod.QueueID) (result Result) {
+// UpdateQueues TODO
+func (upstream *Upstream) UpdateQueues(queues []*Queue) (result Result) {
 	t := time.Now()
 	upstream.Lock()
 	defer upstream.Unlock()
 	new := 0
-	globalNew := 0
-	for _, qid := range queueIDs {
-		if upstream.queueIDs.Add(qid) {
+	newAll := 0
+	for _, queue := range queues {
+		if upstream.queues.Add(queue) {
 			new++
-			upstreams, ok := upstream.mgr.queueUpstreams[qid]
-			if !ok {
-				globalNew++
-				upstreams = UpstreamMap{
-					upstream.ID: upstream,
-				}
-				upstream.mgr.queueUpstreams[qid] = upstreams
-			} else {
+			upstreams, ok := upstream.mgr.queueUpstreams[queue.ID]
+			if ok {
 				upstreams[upstream.ID] = upstream
+				continue
 			}
+			newAll++
+			upstreams = UpstreamMap{
+				upstream.ID: upstream,
+			}
+			upstream.mgr.queueUpstreams[queue.ID] = upstreams
 		}
 	}
-	return Result{
-		"id":           upstream.ID,
-		"num":          len(queueIDs),
-		"new":          new,
-		"total":        upstream.queueIDs.Size(),
-		"global_new":   globalNew,
-		"global_total": len(upstream.mgr.queueUpstreams),
-		"_cost_ms_":    utils.SinceMS(t),
-	}
+	result = upstream.info()
+	result["num"] = len(queues)
+	result["new"] = new
+	result["new_all"] = newAll
+	result["_cost_ms_"] = utils.SinceMS(t)
+	return
 }
 
 // IntersectQueueIDs TODO
@@ -286,7 +290,7 @@ func (upstream *Upstream) IntersectQueueIDs(queueIDs []pod.QueueID) []pod.QueueI
 	defer upstream.RUnlock()
 	out := []pod.QueueID{}
 	for _, qid := range queueIDs {
-		exist := upstream.queueIDs.Get(qid.ItemID())
+		exist := upstream.queues.Get(qid.ItemID())
 		if exist != nil {
 			out = append(out, qid)
 		}
@@ -298,42 +302,53 @@ func (upstream *Upstream) IntersectQueueIDs(queueIDs []pod.QueueID) []pod.QueueI
 func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
 	upstream.RLock()
 	defer upstream.RUnlock()
-	q := upstream.queueIDs.Get(qid.ItemID())
+	q := upstream.queues.Get(qid.ItemID())
 	if q == nil {
 		return false
 	}
 	return true
 }
 
-// DeleteQueueIDs TODO
-func (upstream *Upstream) DeleteQueueIDs(queueIDs []pod.QueueID) (result Result) {
+// DeleteIdleQueue TODO
+func (upstream *Upstream) DeleteIdleQueue(qid pod.QueueID) (result Result) {
+	upstream.Lock()
+	defer upstream.Unlock()
+	return
+}
+
+// DeleteQueues TODO
+func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
 	t := time.Now()
 	upstream.Lock()
 	defer upstream.Unlock()
 
 	deleted := 0
-	globalDeleted := 0
+	deletedTotal := 0
 
 	for _, qid := range queueIDs {
-		if upstream.queueIDs.Delete(qid) {
+		if upstream.queues.Delete(qid.ItemID()) {
 			deleted++
 			upstreams, ok := upstream.mgr.queueUpstreams[qid]
-			if ok {
-				delete(upstreams, upstream.ID)
-				if len(upstreams) <= 0 {
-					delete(upstream.mgr.queueUpstreams, qid)
-					globalDeleted++
-				}
+			if !ok {
+				continue
+			}
+			delete(upstreams, upstream.ID)
+			if len(upstreams) <= 0 {
+				delete(upstream.mgr.queueUpstreams, qid)
+				deletedTotal++
 			}
 		}
 	}
-	return Result{
-		"id":             upstream.ID,
-		"num":            len(queueIDs),
-		"deleted":        deleted,
-		"total":          upstream.queueIDs.Size(),
-		"global_total":   len(upstream.mgr.queueUpstreams),
-		"global_deleted": globalDeleted,
-		"_cost_ms_":      utils.SinceMS(t),
-	}
+	result = upstream.info()
+	result["num"] = len(queueIDs)
+	result["deleted"] = deleted
+	result["_cost_ms_"] = utils.SinceMS(t)
+	return
+}
+
+// GetRequest TODO
+func (upstream *Upstream) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
+	upstream.RLock()
+	defer upstream.RUnlock()
+	return
 }

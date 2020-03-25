@@ -79,7 +79,7 @@ func (task *UpdateQueuesTask) apiPath(path string) string {
 	return base.ResolveReference(u).String()
 }
 
-func (task *UpdateQueuesTask) getQueues() (queueIDs []pod.QueueID, err error) {
+func (task *UpdateQueuesTask) getQueues() (queues []*Queue, err error) {
 	req, err := http.NewRequestWithContext(
 		task.waitStop.ctx,
 		"POST",
@@ -113,22 +113,22 @@ func (task *UpdateQueuesTask) getQueues() (queueIDs []pod.QueueID, err error) {
 	if err != nil {
 		return
 	}
-	queueIDs, err = task.queueIDsFromResult(result)
+	queues, err = task.queuesFromResult(result)
 	return
 }
 
-func (task *UpdateQueuesTask) queueIDsFromResult(result Result) (queueIDs []pod.QueueID, err error) {
-	queueIDs = []pod.QueueID{}
+func (task *UpdateQueuesTask) queuesFromResult(result Result) (queues []*Queue, err error) {
+	queues = []*Queue{}
 	qs, ok := result["queues"]
 	if !ok {
 		err = fmt.Errorf(`"queues" not exist in %s`, result)
 		return
 	}
 	ql := qs.([]interface{})
-	total := 0
+	num := 0
 	new := 0
 	for _, qt := range ql {
-		total++
+		num++
 		qr := qt.(map[string]interface{})
 		q, ok := qr["qid"]
 		if !ok {
@@ -140,13 +140,19 @@ func (task *UpdateQueuesTask) queueIDsFromResult(result Result) (queueIDs []pod.
 		if err != nil {
 			break
 		}
+		var qsize int64 = 10
+		qz, ok := qr["qsize"]
+		if ok {
+			qsize = int64(qz.(float64))
+		}
+
 		if !task.upstream.ExistQueueID(qid) {
-			queueIDs = append(queueIDs, qid)
+			queues = append(queues, NewQueue(qid, qsize))
 			new++
 		}
 	}
 	if err == nil {
-		log.Logger.Debugf(task.logFormat("parse queues total: %d new: %d", total, new))
+		log.Logger.Debugf(task.logFormat("parse queues num: %d new: %d", num, new))
 	}
 	return
 }
@@ -163,7 +169,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 		log.Logger.Warningf(task.logFormat("paused"))
 		return
 	}
-	queueIDs, err := task.getQueues()
+	queues, err := task.getQueues()
 	if err != nil {
 		switch err.(type) {
 		case APIError:
@@ -171,12 +177,17 @@ func (task *UpdateQueuesTask) updateQueues() {
 		}
 		log.Logger.Error(task.logFormat("%s", err))
 		return
-	} else if len(queueIDs) <= 0 {
+	}
+	if status == UpstreamUnavailable {
+		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamWorking)
+	}
+	if len(queues) <= 0 {
 		log.Logger.Warning(task.logFormat("0 queues"))
 		return
 	}
+
 	var result Result
-	result, err = upstream.mgr.UpdateUpStreamQueueIDs(upstream.ID, queueIDs)
+	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
 	if err != nil {
 		log.Logger.Errorf(task.logFormat("%s", err))
 	} else {
@@ -215,21 +226,21 @@ func (task *UpdateQueuesTask) clear() {
 	if upstream.Status() == UpstreamRemoving {
 		log.Logger.Debugf(task.logFormat("start clearing"))
 		for {
-			if upstream.queueIDs.Size() <= 0 {
+			if upstream.queues.Size() <= 0 {
 				break
 			}
 			toBeDeleted := []pod.QueueID{}
-			iter := slicemap.NewFastIter(upstream.queueIDs)
+			iter := slicemap.NewFastIter(upstream.queues)
 			iter.Iter(
 				func(item slicemap.Item) {
-					qid := item.(pod.QueueID)
-					toBeDeleted = append(toBeDeleted, qid)
+					queue := item.(*Queue)
+					toBeDeleted = append(toBeDeleted, queue.ID)
 					if len(toBeDeleted) >= 100 {
 						iter.Break()
 					}
 				},
 			)
-			_, _ = upstream.mgr.DeleteUpstreamQueueIDs(upstream.ID, toBeDeleted)
+			_, _ = upstream.mgr.DeleteUpstreamQueues(upstream.ID, toBeDeleted)
 		}
 		status = UpstreamRemoved
 		log.Logger.Debugf(task.logFormat("clear finished"))

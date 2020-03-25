@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
+	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/cfhamlet/os-rq-pod/pod"
@@ -142,15 +143,23 @@ func (mgr *UpstreamManager) mustExist(id UpstreamID, f CallByUpstream) (result R
 }
 
 func (mgr *UpstreamManager) withLockMustExist(id UpstreamID, f CallByUpstream) (Result, error) {
-	mgr.Lock()
-	defer mgr.Unlock()
+	return mgr.withLockRLockMustExist(id, f, true)
+}
+
+func (mgr *UpstreamManager) withLockRLockMustExist(id UpstreamID, f CallByUpstream, lock bool) (Result, error) {
+	if lock {
+		mgr.Lock()
+		defer mgr.Unlock()
+	} else {
+		mgr.RLock()
+		defer mgr.RUnlock()
+	}
+
 	return mgr.mustExist(id, f)
 }
 
 func (mgr *UpstreamManager) withRLockMustExist(id UpstreamID, f CallByUpstream) (Result, error) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-	return mgr.mustExist(id, f)
+	return mgr.withLockRLockMustExist(id, f, false)
 }
 
 func (mgr *UpstreamManager) startUpstream(id UpstreamID) (Result, error) {
@@ -172,10 +181,10 @@ func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (Result, error) {
 }
 
 // SetStatus TODO
-func (mgr *UpstreamManager) SetStatus(id UpstreamID, status UpstreamStatus) (Result, error) {
+func (mgr *UpstreamManager) SetStatus(id UpstreamID, newStatus UpstreamStatus) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			err = upstream.SetStatus(status)
+			err = upstream.SetStatus(newStatus)
 			if err == nil {
 				result = upstream.Info()
 			}
@@ -306,29 +315,54 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 	return
 }
 
-// UpdateUpStreamQueueIDs TODO
-func (mgr *UpstreamManager) UpdateUpStreamQueueIDs(id UpstreamID, queues []pod.QueueID) (Result, error) {
+// UpdateUpStreamQueues TODO
+func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, queues []*Queue) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.UpdateQueueIDs(queues)
+			result = upstream.UpdateQueues(queues)
 			return
 		},
 	)
 }
 
-// DeleteUpstreamQueueIDs TODO
-func (mgr *UpstreamManager) DeleteUpstreamQueueIDs(id UpstreamID, queues []pod.QueueID) (Result, error) {
+// DeleteUpstreamQueues TODO
+func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queueIDs []pod.QueueID) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.DeleteQueueIDs(queues)
+			result = upstream.DeleteQueues(queueIDs)
+			return
+		},
+	)
+}
+
+// DeleteIdleUpstreamQueueID TODO
+func (mgr *UpstreamManager) DeleteIdleUpstreamQueueID(id UpstreamID, qid pod.QueueID) (Result, error) {
+	return mgr.withLockMustExist(id,
+		func(upstream *Upstream) (result Result, err error) {
+			result = upstream.DeleteIdleQueue(qid)
 			return
 		},
 	)
 }
 
 // GetRequest TODO
-func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
 	mgr.RLock()
 	defer mgr.RUnlock()
-	return nil, nil
+	upstreams, ok := mgr.queueUpstreams[qid]
+	if !ok {
+		err = NotExistError(qid.String())
+		return
+	}
+	for _, upstream := range upstreams {
+		req, err = upstream.GetRequest(qid)
+		if err == nil {
+			return
+		}
+
+	}
+	if req == nil {
+		err = NotExistError(qid.String())
+	}
+	return
 }
