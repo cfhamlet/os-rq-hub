@@ -52,15 +52,15 @@ func AddUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) 
 }
 
 func operateUpstreamByQuery(c *gin.Context, f CallByUpstreamID) (result core.Result, err error) {
-	uid := c.Query("uid")
+	id := c.Query("id")
 
-	if uid == "" {
-		err = ctrl.InvalidQuery("invalid uid")
+	if id == "" {
+		err = ctrl.InvalidQuery("invalid id")
 	} else {
-		result, err = f(core.UpstreamID(uid))
+		result, err = f(core.UpstreamID(id))
 	}
 	if result == nil {
-		result = core.Result{"uid": uid}
+		result = core.Result{"id": id}
 	}
 	return
 }
