@@ -281,7 +281,7 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 		"queues":    out,
 		"total":     total,
 		"upstreams": l,
-		"_cost_ms":  utils.SinceMS(t),
+		"_cost_ms_": utils.SinceMS(t),
 	}
 }
 

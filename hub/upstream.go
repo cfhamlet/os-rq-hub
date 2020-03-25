@@ -276,7 +276,7 @@ func (upstream *Upstream) UpdateQueueIDs(queueIDs []pod.QueueID) (result Result)
 		"total":        upstream.queueIDs.Size(),
 		"global_new":   globalNew,
 		"global_total": len(upstream.mgr.queueUpstreams),
-		"_cost_ms":     utils.SinceMS(t),
+		"_cost_ms_":    utils.SinceMS(t),
 	}
 }
 
@@ -334,6 +334,6 @@ func (upstream *Upstream) DeleteQueueIDs(queueIDs []pod.QueueID) (result Result)
 		"total":          upstream.queueIDs.Size(),
 		"global_total":   len(upstream.mgr.queueUpstreams),
 		"global_deleted": globalDeleted,
-		"_cost_ms":       utils.SinceMS(t),
+		"_cost_ms_":      utils.SinceMS(t),
 	}
 }
