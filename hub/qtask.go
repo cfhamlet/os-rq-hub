@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
+	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
@@ -208,13 +209,32 @@ Done:
 }
 
 func (task *UpdateQueuesTask) clear() {
+	upstream := task.upstream
 	opt := "stop"
 	status := UpstreamStopped
-	if task.upstream.status == UpstreamRemoving {
-		opt = "delete"
+	if upstream.Status() == UpstreamRemoving {
+		log.Logger.Debugf(task.logFormat("start clearing"))
+		for {
+			if upstream.queueIDs.Size() <= 0 {
+				break
+			}
+			toBeDeleted := []pod.QueueID{}
+			iter := slicemap.NewFastIter(upstream.queueIDs)
+			iter.Iter(
+				func(item slicemap.Item) {
+					qid := item.(pod.QueueID)
+					toBeDeleted = append(toBeDeleted, qid)
+					if len(toBeDeleted) >= 100 {
+						iter.Break()
+					}
+				},
+			)
+			_, _ = upstream.mgr.DeleteUpstreamQueueIDs(upstream.ID, toBeDeleted)
+		}
 		status = UpstreamRemoved
+		log.Logger.Debugf(task.logFormat("clear finished"))
 	}
-	result, err := task.upstream.mgr.SetStatus(task.upstream.ID, status)
+	result, err := upstream.mgr.SetStatus(upstream.ID, status)
 	log.Logger.Info(task.logFormat("%s %v %v", opt, result, err))
 }
 
