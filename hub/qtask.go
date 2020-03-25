@@ -140,8 +140,8 @@ func (task *UpdateQueuesTask) queueIDsFromResult(result Result) (queueIDs []pod.
 			break
 		}
 		if !task.upstream.ExistQueueID(qid) {
-			new++
 			queueIDs = append(queueIDs, qid)
+			new++
 		}
 	}
 	if err == nil {
