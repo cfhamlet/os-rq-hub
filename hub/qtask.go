@@ -145,12 +145,12 @@ func (task *UpdateQueuesTask) queueIDsFromResult(result Result) (queueIDs []pod.
 		}
 	}
 	if err == nil {
-		log.Logger.Debugf(task.logMsg("parse queues total: %d new: %d", total, new))
+		log.Logger.Debugf(task.logFormat("parse queues total: %d new: %d", total, new))
 	}
 	return
 }
 
-func (task *UpdateQueuesTask) logMsg(format string, args ...interface{}) string {
+func (task *UpdateQueuesTask) logFormat(format string, args ...interface{}) string {
 	msg := fmt.Sprintf(format, args...)
 	return fmt.Sprintf("<upstream %s> %s", task.upstream.ID, msg)
 }
@@ -159,7 +159,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 	upstream := task.upstream
 	status := upstream.Status()
 	if status == UpstreamPaused {
-		log.Logger.Warningf(task.logMsg("paused"))
+		log.Logger.Warningf(task.logFormat("paused"))
 		return
 	}
 	queueIDs, err := task.getQueues()
@@ -168,18 +168,18 @@ func (task *UpdateQueuesTask) updateQueues() {
 		case APIError:
 			_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
 		}
-		log.Logger.Error(task.logMsg("%s", err))
+		log.Logger.Error(task.logFormat("%s", err))
 		return
 	} else if len(queueIDs) <= 0 {
-		log.Logger.Warning(task.logMsg("0 queues"))
+		log.Logger.Warning(task.logFormat("0 queues"))
 		return
 	}
 	var result Result
 	result, err = upstream.mgr.UpdateUpStreamQueueIDs(upstream.ID, queueIDs)
 	if err != nil {
-		log.Logger.Errorf(task.logMsg("%s", err))
+		log.Logger.Errorf(task.logFormat("%s", err))
 	} else {
-		log.Logger.Debugf(task.logMsg("%v", result))
+		log.Logger.Debugf(task.logFormat("%v", result))
 	}
 }
 
@@ -215,7 +215,7 @@ func (task *UpdateQueuesTask) clear() {
 		status = UpstreamRemoved
 	}
 	result, err := task.upstream.mgr.SetStatus(task.upstream.ID, status)
-	log.Logger.Info(task.logMsg("%s %v %v", opt, result, err))
+	log.Logger.Info(task.logFormat("%s %v %v", opt, result, err))
 }
 
 // Start TODO
