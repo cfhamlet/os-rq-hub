@@ -76,7 +76,7 @@ type RandSelector struct {
 	mgr       *UpstreamManager
 	r         *rand.Rand
 	k         int
-	selected  map[pod.QueueID]bool
+	selected  map[pod.QueueID]Result
 	iterators map[UpstreamID]*CycleCountIter
 	out       []Result
 }
@@ -88,7 +88,7 @@ func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
 		mgr,
 		r,
 		k,
-		map[pod.QueueID]bool{},
+		map[pod.QueueID]Result{},
 		map[UpstreamID]*CycleCountIter{},
 		make([]Result, 0, k),
 	}
@@ -140,23 +140,27 @@ func (selector *RandSelector) Select() []Result {
 func (selector *RandSelector) choice(upstream *Upstream, n int) bool {
 
 	iterator, ok := selector.iterators[upstream.ID]
-	l := upstream.queueIDs.Size()
+	l := upstream.queues.Size()
 	if l <= 0 {
 		return true
 	}
 	if !ok {
-		iterator = NewCycleCountIter(upstream.queueIDs, selector.r.Intn(l), n)
+		iterator = NewCycleCountIter(upstream.queues, selector.r.Intn(l), n)
 	} else {
 		iterator.cycle.SetSteps(n)
 	}
 
 	iterator.Iter(
 		func(item slicemap.Item) {
-			qid := item.(pod.QueueID)
-			_, ok := selector.selected[qid]
+			queue := item.(*Queue)
+			result, ok := selector.selected[queue.ID]
 			if !ok {
-				selector.out = append(selector.out, Result{"qid": qid})
+				result = Result{"qid": queue.ID, "qsize": queue.qsize}
+				selector.selected[queue.ID] = result
+				selector.out = append(selector.out, result)
 				selector.k--
+			} else {
+				result["qsize"] = queue.qsize + result["qsize"].(int64)
 			}
 			if iterator.count+1 >= l {
 				iterator.Break()
