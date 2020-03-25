@@ -2,9 +2,12 @@ package hub
 
 import (
 	"sync"
+	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/utils"
+	"github.com/cfhamlet/os-rq-pod/pod"
 	"github.com/go-redis/redis/v7"
 	"github.com/segmentio/fasthash/fnv1a"
 )
@@ -13,8 +16,8 @@ import (
 type UpstreamID string
 
 // ItemID TODO
-func (uid UpstreamID) ItemID() uint64 {
-	return fnv1a.HashString64(string(uid))
+func (id UpstreamID) ItemID() uint64 {
+	return fnv1a.HashString64(string(id))
 }
 func workUpstreamStatus(status UpstreamStatus) bool {
 	return status == UpstreamWorking ||
@@ -242,4 +245,70 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
 	upstream.Lock()
 	defer upstream.Unlock()
 	return upstream.setStatus(newStatus)
+}
+
+// UpdateQueues TODO
+func (upstream *Upstream) UpdateQueues(queueIDs []pod.QueueID) (result Result) {
+	t := time.Now()
+	upstream.Lock()
+	defer upstream.Unlock()
+	new := 0
+	globalNew := 0
+	for _, qid := range queueIDs {
+		if upstream.queueIDs.Add(qid) {
+			new++
+			upstreams, ok := upstream.mgr.queueUpstreams[qid]
+			if !ok {
+				globalNew++
+				upstreams = UpstreamMap{
+					upstream.ID: upstream,
+				}
+				upstream.mgr.queueUpstreams[qid] = upstreams
+			} else {
+				upstreams[upstream.ID] = upstream
+			}
+		}
+	}
+	return Result{
+		"id":           upstream.ID,
+		"num":          len(queueIDs),
+		"new":          new,
+		"total":        upstream.queueIDs.Size(),
+		"global_new":   globalNew,
+		"global_total": len(upstream.mgr.queueUpstreams),
+		"_cost_ms":     utils.SinceMS(t),
+	}
+}
+
+// DeleteQueues TODO
+func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
+	t := time.Now()
+	upstream.Lock()
+	defer upstream.Unlock()
+
+	deleted := 0
+	globalDeleted := 0
+
+	for _, qid := range queueIDs {
+		if upstream.queueIDs.Delete(qid) {
+			deleted++
+			upstreams, ok := upstream.mgr.queueUpstreams[qid]
+			if ok {
+				delete(upstreams, upstream.ID)
+				if len(upstreams) <= 0 {
+					delete(upstream.mgr.queueUpstreams, qid)
+					globalDeleted++
+				}
+			}
+		}
+	}
+	return Result{
+		"id":             upstream.ID,
+		"num":            len(queueIDs),
+		"deleted":        deleted,
+		"total":          upstream.queueIDs.Size(),
+		"global_total":   len(upstream.mgr.queueUpstreams),
+		"global_deleted": globalDeleted,
+		"_cost_ms":       utils.SinceMS(t),
+	}
 }

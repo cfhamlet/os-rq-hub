@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
@@ -10,12 +11,18 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
+// UpstreamMap TODO
+type UpstreamMap map[UpstreamID]*Upstream
+
+// QueueUpstreamsMap TODO
+type QueueUpstreamsMap map[pod.QueueID]UpstreamMap
+
 // UpstreamManager TODO
 type UpstreamManager struct {
 	hub             *Hub
 	upstreams       map[UpstreamID]*Upstream
 	statusUpstreams map[UpstreamStatus]*slicemap.Map
-	queueBox        *QueueBox
+	queueUpstreams  QueueUpstreamsMap
 	waitStop        *sync.WaitGroup
 	*sync.RWMutex
 }
@@ -30,7 +37,7 @@ func NewUpstreamManager(hub *Hub) *UpstreamManager {
 		hub,
 		map[UpstreamID]*Upstream{},
 		statusUpstreams,
-		NewQueueBox(hub),
+		QueueUpstreamsMap{},
 		&sync.WaitGroup{},
 		&sync.RWMutex{},
 	}
@@ -203,16 +210,6 @@ func (mgr *UpstreamManager) PauseUpstream(id UpstreamID) (result Result, err err
 	)
 }
 
-// UpdateStreamQueues TODO
-func (mgr *UpstreamManager) UpdateStreamQueues(id UpstreamID, queues []pod.QueueID) error {
-	_, err := mgr.withLockMustExist(id,
-		func(upstream *Upstream) (result Result, err error) {
-			return
-		},
-	)
-	return err
-}
-
 // DeleteUpstream TODO
 func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result Result, err error) {
 	return mgr.withLockMustExist(id,
@@ -257,25 +254,19 @@ func (mgr *UpstreamManager) Info() (result Result) {
 		st[utils.Text(status)] = mgr.statusUpstreams[status].Size()
 	}
 	result = Result{"status": st}
-	result["queues"] = len(mgr.queueBox.queueUpstreams)
+	result["queues"] = len(mgr.queueUpstreams)
 	return
-}
-
-// GetRequest TODO
-func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-	return mgr.queueBox.GetRequest(qid)
 }
 
 // Queues TODO
 func (mgr *UpstreamManager) Queues(k int) (result Result) {
+	t := time.Now()
 	mgr.RLock()
 	defer mgr.RUnlock()
 
 	upstreams := mgr.statusUpstreams[UpstreamWorking]
 	l := upstreams.Size()
-	total := len(mgr.queueBox.queueUpstreams)
+	total := len(mgr.queueUpstreams)
 	var selector QueuesSelector
 	if l <= 0 {
 		selector = emptySelector
@@ -290,6 +281,7 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 		"queues":    out,
 		"total":     total,
 		"upstreams": l,
+		"_cost_ms":  utils.SinceMS(t),
 	}
 }
 
@@ -312,4 +304,31 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 	)
 	result["upstreams"] = out
 	return
+}
+
+// UpdateUpStreamQueues TODO
+func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, queues []pod.QueueID) (Result, error) {
+	return mgr.withLockMustExist(id,
+		func(upstream *Upstream) (result Result, err error) {
+			result = upstream.UpdateQueues(queues)
+			return
+		},
+	)
+}
+
+// DeleteUpstreamQueues TODO
+func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queues []pod.QueueID) (Result, error) {
+	return mgr.withLockMustExist(id,
+		func(upstream *Upstream) (result Result, err error) {
+			result = upstream.DeleteQueues(queues)
+			return
+		},
+	)
+}
+
+// GetRequest TODO
+func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	return nil, nil
 }
