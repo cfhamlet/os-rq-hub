@@ -3,6 +3,7 @@ package hub
 import (
 	"sync"
 
+	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
@@ -44,6 +45,6 @@ func (mgr *DownstreamManager) Queues(k int) Result {
 }
 
 // GetRequest TODO
-func (mgr *DownstreamManager) GetRequest(qid pod.QueueID) (Result, error) {
+func (mgr *DownstreamManager) GetRequest(qid pod.QueueID) (*request.Request, error) {
 	return mgr.hub.upstreamMgr.GetRequest(qid)
 }

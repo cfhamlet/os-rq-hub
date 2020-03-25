@@ -2,10 +2,12 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 
 	core "github.com/cfhamlet/os-rq-hub/hub"
 	ctrl "github.com/cfhamlet/os-rq-pod/app/controller"
+	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -127,7 +129,11 @@ func GetRequest(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
 
 	qid, err := ctrl.QueueIDFromQuery(q)
 	if err == nil {
-		result, err = hub.GetRequest(qid)
+		var req *request.Request
+		req, err = hub.GetRequest(qid)
+		if err == nil {
+			c.JSON(http.StatusOK, req)
+		}
 	}
 	return
 }

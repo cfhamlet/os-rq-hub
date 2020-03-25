@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
+	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/cfhamlet/os-rq-pod/pod"
 	"github.com/go-redis/redis/v7"
@@ -293,16 +294,14 @@ func (hub *Hub) AddUpstream(metaStore *UpstreamStoreMeta) (Result, error) {
 }
 
 // GetRequest TODO
-func (hub *Hub) GetRequest(qid pod.QueueID) (Result, error) {
-	return hub.withRLockOnWorkStatus(
-		func() (result Result, err error) {
-			if hub.status != Working {
-				err = UnavailableError(utils.Text(hub.status))
-				return
-			}
-			return hub.downstreamMgr.GetRequest(qid)
-		},
-	)
+func (hub *Hub) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
+	hub.RLock()
+	defer hub.RUnlock()
+	if !workStatus(hub.status) && hub.status != Working {
+		err = UnavailableError(hub.status)
+		return
+	}
+	return hub.downstreamMgr.GetRequest(qid)
 }
 
 func (hub *Hub) setStatus(newStatus Status) (err error) {
