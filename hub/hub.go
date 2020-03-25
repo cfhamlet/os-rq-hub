@@ -217,7 +217,7 @@ func (hub *Hub) Info() (result Result, err error) {
 
 	t := time.Now()
 	memoryInfo, err := hub.Client.Info("memory").Result()
-	r := Result{"cost_ms": float64(time.Since(t)) / 1000000}
+	r := Result{"_cost_ms": utils.SinceMS(t)}
 
 	if err == nil {
 		k, v := utils.ParseRedisInfo(memoryInfo, "used_memory_rss")
