@@ -1,7 +1,8 @@
 package hub
 
 import (
-	"encoding/json"
+	"math/rand"
+	"net/url"
 	"sync"
 	"time"
 
@@ -12,11 +13,8 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
-// UpstreamMap TODO
-type UpstreamMap map[UpstreamID]*Upstream
-
 // QueueUpstreamsMap TODO
-type QueueUpstreamsMap map[pod.QueueID]UpstreamMap
+type QueueUpstreamsMap map[pod.QueueID]*slicemap.Map
 
 // UpstreamManager TODO
 type UpstreamManager struct {
@@ -26,6 +24,7 @@ type UpstreamManager struct {
 	queueUpstreams  QueueUpstreamsMap
 	waitStop        *sync.WaitGroup
 	*sync.RWMutex
+	rand *rand.Rand
 }
 
 // NewUpstreamManager TODO
@@ -41,6 +40,7 @@ func NewUpstreamManager(hub *Hub) *UpstreamManager {
 		QueueUpstreamsMap{},
 		&sync.WaitGroup{},
 		&sync.RWMutex{},
+		rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -66,7 +66,7 @@ func (mgr *UpstreamManager) Stop() {
 	for id := range mgr.upstreams {
 		_, err := mgr.stopUpstream(id)
 		if err != nil {
-			log.Logger.Warningf("stop upstream fail %s %s", id, err)
+			log.Logger.Warning("stop upstream fail", id, err)
 		}
 	}
 	mgr.Unlock()
@@ -93,40 +93,39 @@ func (mgr *UpstreamManager) LoadUpstreams() (err error) {
 				}
 				isKey = !isKey
 
-				metaStore := NewUpstreamStoreMeta(nil)
-				err = json.Unmarshal([]byte(key), metaStore)
+				storeMeta, err := UnmarshalUpstreamStoreMetaJSON([]byte(key))
 				if err != nil {
 					log.Logger.Warning("invalid meta", key, err)
 					continue
 				}
 				var upstream *Upstream
-				upstream, err = mgr.addUpstream(metaStore)
+				upstream, err = mgr.addUpstream(storeMeta)
 				if err != nil {
 					break
 				}
-				log.Logger.Infof("load upstream %s %s", upstream.ID, upstream.Status())
+				log.Logger.Info("load upstream", upstream.ID, upstream.Status())
 			}
 			return
 		},
 	)
 
 	if err == nil {
-		log.Logger.Debugf("loading upstreams finish %d", len(mgr.upstreams))
+		log.Logger.Debug("loading upstreams finish", len(mgr.upstreams))
 	} else {
-		log.Logger.Errorf("loading upstreams finish %d, %s", len(mgr.upstreams), err)
+		log.Logger.Error("loading upstreams finish", len(mgr.upstreams), err)
 	}
 
 	return
 }
 
-func (mgr *UpstreamManager) addUpstream(metaStore *UpstreamStoreMeta) (upstream *Upstream, err error) {
-	_, ok := mgr.upstreams[metaStore.ID]
+func (mgr *UpstreamManager) addUpstream(storeMeta *UpstreamStoreMeta) (upstream *Upstream, err error) {
+	_, ok := mgr.upstreams[storeMeta.ID]
 	if ok {
-		err = ExistError(metaStore.ID)
+		err = ExistError(storeMeta.ID)
 		return
 	}
-	upstream = NewUpstream(mgr, metaStore.UpstreamMeta)
-	err = upstream.setStatus(metaStore.Status)
+	upstream = NewUpstream(mgr, storeMeta.UpstreamMeta)
+	err = upstream.setStatus(storeMeta.Status)
 	return
 }
 
@@ -243,12 +242,20 @@ func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result Result, err erro
 }
 
 // AddUpstream TODO
-func (mgr *UpstreamManager) AddUpstream(metaStore *UpstreamStoreMeta) (result Result, err error) {
+func (mgr *UpstreamManager) AddUpstream(storeMeta *UpstreamStoreMeta) (result Result, err error) {
 	mgr.Lock()
 	defer mgr.Unlock()
-	_, err = mgr.addUpstream(metaStore)
+	if storeMeta.parsedAPI == nil {
+		var parsedURL *url.URL
+		parsedURL, err = url.Parse(storeMeta.API)
+		if err != nil {
+			return
+		}
+		storeMeta.parsedAPI = parsedURL
+	}
+	_, err = mgr.addUpstream(storeMeta)
 	if err == nil {
-		result, err = mgr.startUpstream(metaStore.ID)
+		result, err = mgr.startUpstream(storeMeta.ID)
 	}
 	return
 }
@@ -328,10 +335,10 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 }
 
 // UpdateUpStreamQueues TODO
-func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, queues []*Queue) (Result, error) {
+func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, qMetas []*QueueMeta) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.UpdateQueues(queues)
+			result = upstream.UpdateQueues(qMetas)
 			return
 		},
 	)
@@ -347,8 +354,8 @@ func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queueIDs []pod.Q
 	)
 }
 
-// DeleteIdleUpstreamQueueID TODO
-func (mgr *UpstreamManager) DeleteIdleUpstreamQueueID(id UpstreamID, qid pod.QueueID) (Result, error) {
+// DeleteIdleUpstreamQueue TODO
+func (mgr *UpstreamManager) DeleteIdleUpstreamQueue(id UpstreamID, qid pod.QueueID) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			result = upstream.DeleteIdleQueue(qid)
@@ -366,15 +373,20 @@ func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (req *request.Request, e
 		err = NotExistError(qid.String())
 		return
 	}
-	for _, upstream := range upstreams {
-		req, err = upstream.GetRequest(qid)
-		if err == nil {
-			return
-		}
-
+	l := upstreams.Size()
+	var iterator slicemap.Iterator
+	if l == 1 {
+		iterator = slicemap.NewFastIter(upstreams)
+	} else {
+		iterator = slicemap.NewCycleIter(upstreams, mgr.rand.Intn(l), l)
 	}
-	if req == nil {
-		err = NotExistError(qid.String())
-	}
+	// toBeDeleted := make([]*Upstream, 0)
+	iterator.Iter(
+		func(item slicemap.Item) {
+			upstream := item.(*Upstream)
+			upstream.GetRequest(qid)
+			iterator.Break()
+		},
+	)
 	return
 }
