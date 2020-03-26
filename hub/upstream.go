@@ -1,6 +1,8 @@
 package hub
 
 import (
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -39,10 +41,34 @@ type UpstreamStoreMeta struct {
 	Status UpstreamStatus `json:"status"`
 }
 
+// UnmarshalUpstreamStoreMetaJSON TODO
+func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err error) {
+	storeMeta = NewUpstreamStoreMeta(nil)
+	err = json.Unmarshal(b, storeMeta)
+	if err == nil {
+		var parsedURL *url.URL
+		parsedURL, err = url.Parse(storeMeta.API)
+		storeMeta.parsedAPI = parsedURL
+	}
+	return
+}
+
 // UpstreamMeta TODO
 type UpstreamMeta struct {
-	ID  UpstreamID `json:"id" binding:"required"`
-	API string     `json:"api" binding:"required"`
+	ID        UpstreamID `json:"id" binding:"required"`
+	API       string     `json:"api" binding:"required"`
+	parsedAPI *url.URL
+}
+
+// NewUpstreamStoreMeta TODO
+func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
+	if upstream == nil {
+		return &UpstreamStoreMeta{}
+	}
+	return &UpstreamStoreMeta{
+		upstream.UpstreamMeta,
+		upstream.status,
+	}
 }
 
 // Upstream TODO
@@ -53,6 +79,7 @@ type Upstream struct {
 	queues *slicemap.Map
 	qtask  *UpdateQueuesTask
 	*sync.RWMutex
+	client *http.Client
 }
 
 // NewUpstream TODO
@@ -64,6 +91,7 @@ func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
 		slicemap.New(),
 		nil,
 		&sync.RWMutex{},
+		&http.Client{},
 	}
 
 	return upstream
@@ -135,9 +163,9 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	if workUpstreamStatus(newStatus) &&
 		newStatus != UpstreamUnavailable &&
 		oldStatus != UpstreamUnavailable {
-		metaStore := NewUpstreamStoreMeta(upstream)
-		metaStore.Status = newStatus
-		err = saveMeta(mgr.hub.Client, metaStore)
+		storeMeta := NewUpstreamStoreMeta(upstream)
+		storeMeta.Status = newStatus
+		err = saveMeta(mgr.hub.Client, storeMeta)
 		if err != nil {
 			return
 		}
@@ -159,17 +187,6 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	}
 
 	return
-}
-
-// NewUpstreamStoreMeta TODO
-func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
-	if upstream == nil {
-		return &UpstreamStoreMeta{}
-	}
-	return &UpstreamStoreMeta{
-		&UpstreamMeta{upstream.ID, upstream.API},
-		upstream.status,
-	}
 }
 
 // ItemID TODO
@@ -257,47 +274,38 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
 }
 
 // UpdateQueues TODO
-func (upstream *Upstream) UpdateQueues(queues []*Queue) (result Result) {
+func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result Result) {
 	t := time.Now()
 	upstream.Lock()
 	defer upstream.Unlock()
 	new := 0
 	newTotal := 0
-	for _, queue := range queues {
-		if upstream.queues.Add(queue) {
+	for _, meta := range qMetas {
+		queue := upstream.queues.Get(meta.ID.ItemID())
+		if queue == nil {
 			new++
+			queue := NewQueue(upstream, meta)
+			upstream.queues.Add(queue)
 			upstreams, ok := upstream.mgr.queueUpstreams[queue.ID]
 			if ok {
-				upstreams[upstream.ID] = upstream
+				upstreams.Add(upstream)
 				continue
 			}
 			newTotal++
-			upstreams = UpstreamMap{
-				upstream.ID: upstream,
-			}
+			upstreams = slicemap.New()
+			upstreams.Add(upstream)
 			upstream.mgr.queueUpstreams[queue.ID] = upstreams
+		} else {
+			q := queue.(*Queue)
+			q.qsize = meta.qsize
 		}
 	}
 	result = upstream.info()
-	result["num"] = len(queues)
+	result["num"] = len(qMetas)
 	result["new"] = new
 	result["new_total"] = newTotal
 	result["_cost_ms_"] = utils.SinceMS(t)
 	return
-}
-
-// IntersectQueueIDs TODO
-func (upstream *Upstream) IntersectQueueIDs(queueIDs []pod.QueueID) []pod.QueueID {
-	upstream.RLock()
-	defer upstream.RUnlock()
-	out := []pod.QueueID{}
-	for _, qid := range queueIDs {
-		exist := upstream.queues.Get(qid.ItemID())
-		if exist != nil {
-			out = append(out, qid)
-		}
-	}
-	return out
 }
 
 // ExistQueueID TODO
@@ -315,6 +323,7 @@ func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
 func (upstream *Upstream) DeleteIdleQueue(qid pod.QueueID) (result Result) {
 	upstream.Lock()
 	defer upstream.Unlock()
+
 	return
 }
 
@@ -334,8 +343,8 @@ func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
 			if !ok {
 				continue
 			}
-			delete(upstreams, upstream.ID)
-			if len(upstreams) <= 0 {
+			upstreams.Delete(upstream.ItemID())
+			if upstreams.Size() <= 0 {
 				delete(upstream.mgr.queueUpstreams, qid)
 				deletedTotal++
 			}
@@ -353,5 +362,13 @@ func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
 func (upstream *Upstream) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
 	upstream.RLock()
 	defer upstream.RUnlock()
+	q := upstream.queues.Get(qid.ItemID())
+	if q == nil {
+		err = NotExistError(qid.String())
+	}
+	queue := q.(*Queue)
+	// var qsize int64
+	req, _, err = queue.Get()
+
 	return
 }
