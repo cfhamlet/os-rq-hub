@@ -311,6 +311,7 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 	iter := slicemap.NewFastIter(upstreams)
 	result = Result{
 		"status": utils.Text(status),
+		"count":  upstreams.Size(),
 		"total":  upstreams.Size(),
 	}
 	out := []Result{}
