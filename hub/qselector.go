@@ -41,12 +41,16 @@ func (selector *AllSelector) Select() []Result {
 	for qid, upstreams := range mgr.queueUpstreams {
 		r := Result{"qid": qid}
 		var qsize int64 = 0
-		for _, upstream := range upstreams {
-			queue := upstream.queues.Get(qid.ItemID())
-			if queue != nil {
-				qsize += (queue.(*Queue)).qsize
-			}
-		}
+		iter := slicemap.NewFastIter(upstreams)
+		iter.Iter(
+			func(item slicemap.Item) {
+				upstream := item.(*Upstream)
+				queue := upstream.queues.Get(qid.ItemID())
+				if queue != nil {
+					qsize += (queue.(*Queue)).qsize
+				}
+			},
+		)
 		r["qsize"] = qsize
 		out = append(out, r)
 	}
