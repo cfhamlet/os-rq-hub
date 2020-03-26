@@ -2,6 +2,7 @@ package hub
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -200,12 +201,16 @@ func (hub *Hub) metaInfo() Result {
 	return Result{
 		"status": hub.status,
 		"process": Result{
+			"pid":    os.Getpid(),
 			"memory": utils.MemoryInfo(hub.Process),
 			"cpu": Result{
 				"percent": utils.CPUPercent(hub.Process),
 			},
 		},
-		"upstreams": hub.upstreamMgr.Info(),
+		"upstreams_info": hub.upstreamMgr.Info(),
+		"qeueus_stats": Result{
+			"total": hub.upstreamMgr.QueuesNum(),
+		},
 	}
 }
 

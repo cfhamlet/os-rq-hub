@@ -253,18 +253,20 @@ func (mgr *UpstreamManager) AddUpstream(metaStore *UpstreamStoreMeta) (result Re
 	return
 }
 
-// Info TODO
-func (mgr *UpstreamManager) Info() (result Result) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-
+func (mgr *UpstreamManager) info() (result Result) {
 	st := Result{}
 	for _, status := range UpstreamStatusList {
 		st[utils.Text(status)] = mgr.statusUpstreams[status].Size()
 	}
-	result = Result{"status": st}
-	result["queues"] = len(mgr.queueUpstreams)
+	result = Result{"status_num": st}
 	return
+}
+
+// Info TODO
+func (mgr *UpstreamManager) Info() (result Result) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	return mgr.info()
 }
 
 // Queues TODO
@@ -288,10 +290,17 @@ func (mgr *UpstreamManager) Queues(k int) (result Result) {
 	return Result{
 		"k":         k,
 		"queues":    out,
+		"count":     len(out),
 		"total":     total,
-		"upstreams": l,
 		"_cost_ms_": utils.SinceMS(t),
 	}
+}
+
+// QueuesNum TODO
+func (mgr *UpstreamManager) QueuesNum() int {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	return len(mgr.queueUpstreams)
 }
 
 // Upstreams TODO
@@ -304,14 +313,16 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result Result, err
 		"status": utils.Text(status),
 		"total":  upstreams.Size(),
 	}
-	out := []*UpstreamStoreMeta{}
+	out := []Result{}
 	iter.Iter(func(item slicemap.Item) {
-		u := item.(*Upstream)
-		m := NewUpstreamStoreMeta(u)
-		out = append(out, m)
+		upstream := item.(*Upstream)
+		out = append(out, upstream.info())
 	},
 	)
 	result["upstreams"] = out
+	result["queues_stats"] = Result{
+		"total": len(mgr.queueUpstreams),
+	}
 	return
 }
 

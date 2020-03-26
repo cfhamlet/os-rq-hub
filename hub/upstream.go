@@ -226,10 +226,12 @@ func (upstream *Upstream) Stop() (err error) {
 
 func (upstream *Upstream) info() (result Result) {
 	return Result{
-		"id":         upstream.ID,
-		"status":     upstream.status,
-		"queues":     upstream.queues.Size(),
-		"queues_all": len(upstream.mgr.queueUpstreams),
+		"id":     upstream.ID,
+		"api":    upstream.API,
+		"status": upstream.status,
+		"queues_stats": Result{
+			"total": upstream.queues.Size(),
+		},
 	}
 }
 
@@ -260,7 +262,7 @@ func (upstream *Upstream) UpdateQueues(queues []*Queue) (result Result) {
 	upstream.Lock()
 	defer upstream.Unlock()
 	new := 0
-	newAll := 0
+	newTotal := 0
 	for _, queue := range queues {
 		if upstream.queues.Add(queue) {
 			new++
@@ -269,7 +271,7 @@ func (upstream *Upstream) UpdateQueues(queues []*Queue) (result Result) {
 				upstreams[upstream.ID] = upstream
 				continue
 			}
-			newAll++
+			newTotal++
 			upstreams = UpstreamMap{
 				upstream.ID: upstream,
 			}
@@ -279,7 +281,7 @@ func (upstream *Upstream) UpdateQueues(queues []*Queue) (result Result) {
 	result = upstream.info()
 	result["num"] = len(queues)
 	result["new"] = new
-	result["new_all"] = newAll
+	result["new_total"] = newTotal
 	result["_cost_ms_"] = utils.SinceMS(t)
 	return
 }
@@ -342,6 +344,7 @@ func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
 	result = upstream.info()
 	result["num"] = len(queueIDs)
 	result["deleted"] = deleted
+	result["deleted_total"] = deletedTotal
 	result["_cost_ms_"] = utils.SinceMS(t)
 	return
 }

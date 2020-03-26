@@ -38,8 +38,16 @@ func NewAllSelector(mgr *UpstreamManager) *AllSelector {
 func (selector *AllSelector) Select() []Result {
 	mgr := selector.mgr
 	out := make([]Result, 0, len(mgr.queueUpstreams))
-	for qid := range mgr.queueUpstreams {
+	for qid, upstreams := range mgr.queueUpstreams {
 		r := Result{"qid": qid}
+		var qsize int64 = 0
+		for _, upstream := range upstreams {
+			queue := upstream.queues.Get(qid.ItemID())
+			if queue != nil {
+				qsize += (queue.(*Queue)).qsize
+			}
+		}
+		r["qsize"] = qsize
 		out = append(out, r)
 	}
 	return out
