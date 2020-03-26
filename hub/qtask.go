@@ -2,13 +2,13 @@ package hub
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pod"
@@ -60,30 +60,34 @@ func NewUpdateQueuesTask(upstream *Upstream) *UpdateQueuesTask {
 
 // APIError TODO
 type APIError struct {
-	reason string
-	err    error
+	which string
+	err   error
 }
 
 func (e APIError) Error() string {
-	return fmt.Sprintf("%s %s", e.reason, e.err)
+	return fmt.Sprintf("%s %s", e.which, e.err)
 }
 
 // apiPath TODO
-func (task *UpdateQueuesTask) apiPath(path string) string {
-	base, err := url.Parse(task.upstream.API)
-	if err != nil {
-		return ""
-	}
+func (task *UpdateQueuesTask) apiPath(path string) (api string, err error) {
 	u, err := url.Parse(path)
+	if err == nil {
+		api = task.upstream.parsedAPI.ResolveReference(u).String()
+	}
 
-	return base.ResolveReference(u).String()
+	return
 }
 
-func (task *UpdateQueuesTask) getQueues() (queues []*Queue, err error) {
+func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
+	var apiPath string
+	apiPath, err = task.apiPath("queues/")
+	if err != nil {
+		return
+	}
 	req, err := http.NewRequestWithContext(
 		task.waitStop.ctx,
 		"POST",
-		task.apiPath("queues/"),
+		apiPath,
 		nil,
 	)
 	if err != nil {
@@ -113,12 +117,12 @@ func (task *UpdateQueuesTask) getQueues() (queues []*Queue, err error) {
 	if err != nil {
 		return
 	}
-	queues, err = task.queuesFromResult(result)
+	qMetas, err = task.queuesFromResult(result)
 	return
 }
 
-func (task *UpdateQueuesTask) queuesFromResult(result Result) (queues []*Queue, err error) {
-	queues = []*Queue{}
+func (task *UpdateQueuesTask) queuesFromResult(result Result) (qMetas []*QueueMeta, err error) {
+	qMetas = []*QueueMeta{}
 	qs, ok := result["queues"]
 	if !ok {
 		err = fmt.Errorf(`"queues" not exist in %s`, result)
@@ -147,7 +151,7 @@ func (task *UpdateQueuesTask) queuesFromResult(result Result) (queues []*Queue, 
 		}
 
 		if !task.upstream.ExistQueueID(qid) {
-			queues = append(queues, NewQueue(qid, qsize))
+			qMetas = append(qMetas, NewQueueMeta(qid, qsize))
 			new++
 		}
 	}
@@ -169,7 +173,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 		log.Logger.Warningf(task.logFormat("paused"))
 		return
 	}
-	queues, err := task.getQueues()
+	queues, err := task.getQueueMetas()
 	if err != nil {
 		switch err.(type) {
 		case APIError:
@@ -189,9 +193,9 @@ func (task *UpdateQueuesTask) updateQueues() {
 	var result Result
 	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
 	if err != nil {
-		log.Logger.Errorf(task.logFormat("%s", err))
+		log.Logger.Error(task.logFormat("%v", err))
 	} else {
-		log.Logger.Debugf(task.logFormat("%v", result))
+		log.Logger.Debug(task.logFormat("%v", result))
 	}
 }
 
@@ -224,7 +228,8 @@ func (task *UpdateQueuesTask) clear() {
 	opt := "stop"
 	status := UpstreamStopped
 	if upstream.Status() == UpstreamRemoving {
-		log.Logger.Debugf(task.logFormat("start clearing"))
+		log.Logger.Debug(task.logFormat("start clearing queues %d",
+			upstream.queues.Size()))
 		for {
 			if upstream.queues.Size() <= 0 {
 				break
@@ -243,7 +248,7 @@ func (task *UpdateQueuesTask) clear() {
 			_, _ = upstream.mgr.DeleteUpstreamQueues(upstream.ID, toBeDeleted)
 		}
 		status = UpstreamRemoved
-		log.Logger.Debugf(task.logFormat("clear finished"))
+		log.Logger.Debug(task.logFormat("clear finished"))
 	}
 	result, err := upstream.mgr.SetStatus(upstream.ID, status)
 	log.Logger.Info(task.logFormat("%s %v %v", opt, result, err))
