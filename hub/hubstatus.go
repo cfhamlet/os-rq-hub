@@ -4,9 +4,9 @@ package hub
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 
+	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 )
 
