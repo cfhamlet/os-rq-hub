@@ -41,12 +41,12 @@ func Info(c *gin.Context, hub *core.Hub) (core.Result, error) {
 
 // AddUpstream TODO
 func AddUpstream(c *gin.Context, hub *core.Hub) (result core.Result, err error) {
-	var metaStore *core.UpstreamStoreMeta = core.NewUpstreamStoreMeta(nil)
+	var storeMeta *core.UpstreamStoreMeta = core.NewUpstreamStoreMeta(nil)
 
-	if err = c.ShouldBindJSON(metaStore); err != nil {
+	if err = c.ShouldBindJSON(storeMeta); err != nil {
 		err = ctrl.InvalidBody(fmt.Sprintf("%s", err))
 	} else {
-		result, err = hub.AddUpstream(metaStore)
+		result, err = hub.AddUpstream(storeMeta)
 	}
 
 	c.Header("Access-Control-Allow-Origin", "*")
