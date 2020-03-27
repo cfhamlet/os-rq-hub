@@ -344,8 +344,8 @@ func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, qMetas []*QueueM
 	)
 }
 
-// DeleteUpstreamQueues TODO
-func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queueIDs []pod.QueueID) (Result, error) {
+// DeleteQueues TODO
+func (mgr *UpstreamManager) DeleteQueues(id UpstreamID, queueIDs []pod.QueueID) (Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result Result, err error) {
 			result = upstream.DeleteQueues(queueIDs)
@@ -354,23 +354,27 @@ func (mgr *UpstreamManager) DeleteUpstreamQueues(id UpstreamID, queueIDs []pod.Q
 	)
 }
 
-// DeleteIdleUpstreamQueue TODO
-func (mgr *UpstreamManager) DeleteIdleUpstreamQueue(id UpstreamID, qid pod.QueueID) (Result, error) {
-	return mgr.withLockMustExist(id,
-		func(upstream *Upstream) (result Result, err error) {
-			result = upstream.DeleteIdleQueue(qid)
-			return
-		},
-	)
+// DeleteOutdated TODO
+func (mgr *UpstreamManager) DeleteOutdated(ids []UpstreamID, qid pod.QueueID, ts time.Time) {
+	mgr.Lock()
+	defer mgr.Unlock()
+	for _, id := range ids {
+		upstream, ok := mgr.upstreams[id]
+		if !ok {
+			continue
+		}
+		upstream.deleteOutdated(qid, ts)
+	}
+	return
 }
 
 // GetRequest TODO
 func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
 	mgr.RLock()
-	defer mgr.RUnlock()
 	upstreams, ok := mgr.queueUpstreams[qid]
 	if !ok {
 		err = NotExistError(qid.String())
+		mgr.RUnlock()
 		return
 	}
 	l := upstreams.Size()
@@ -380,13 +384,22 @@ func (mgr *UpstreamManager) GetRequest(qid pod.QueueID) (req *request.Request, e
 	} else {
 		iterator = slicemap.NewCycleIter(upstreams, mgr.rand.Intn(l), l)
 	}
-	// toBeDeleted := make([]*Upstream, 0)
+	toBeDeleted := make([]UpstreamID, 0)
 	iterator.Iter(
 		func(item slicemap.Item) {
 			upstream := item.(*Upstream)
-			upstream.GetRequest(qid)
-			iterator.Break()
+			var qsize int64
+			req, qsize, err = upstream.GetRequest(qid)
+			if err != nil || qsize <= 0 {
+				toBeDeleted = append(toBeDeleted, upstream.ID)
+			} else {
+				iterator.Break()
+			}
 		},
 	)
+	mgr.RUnlock()
+	if len(toBeDeleted) > 0 {
+		mgr.DeleteOutdated(toBeDeleted, qid, time.Now())
+	}
 	return
 }
