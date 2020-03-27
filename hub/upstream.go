@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -298,6 +299,7 @@ func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result Result) {
 		} else {
 			q := queue.(*Queue)
 			q.qsize = meta.qsize
+			q.updateTime = time.Now()
 		}
 	}
 	result = upstream.info()
@@ -319,12 +321,30 @@ func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
 	return true
 }
 
-// DeleteIdleQueue TODO
-func (upstream *Upstream) DeleteIdleQueue(qid pod.QueueID) (result Result) {
-	upstream.Lock()
-	defer upstream.Unlock()
+func (upstream *Upstream) deleteQueue(qid pod.QueueID) bool {
+	if upstream.queues.Delete(qid.ItemID()) {
+		upstreams, ok := upstream.mgr.queueUpstreams[qid]
+		if ok {
+			upstreams.Delete(upstream.ItemID())
+			if upstreams.Size() <= 0 {
+				delete(upstream.mgr.queueUpstreams, qid)
+			}
+		}
+		return true
+	}
+	return false
+}
 
-	return
+func (upstream *Upstream) deleteOutdated(qid pod.QueueID, ts time.Time) bool {
+	q := upstream.queues.Get(qid.ItemID())
+	if q == nil {
+		return true
+	}
+	queue := q.(*Queue)
+	if ts.Sub(queue.updateTime) > 0 {
+		return upstream.deleteQueue(qid)
+	}
+	return false
 }
 
 // DeleteQueues TODO
@@ -334,41 +354,33 @@ func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
 	defer upstream.Unlock()
 
 	deleted := 0
-	deletedTotal := 0
 
 	for _, qid := range queueIDs {
-		if upstream.queues.Delete(qid.ItemID()) {
+		if upstream.deleteQueue(qid) {
 			deleted++
-			upstreams, ok := upstream.mgr.queueUpstreams[qid]
-			if !ok {
-				continue
-			}
-			upstreams.Delete(upstream.ItemID())
-			if upstreams.Size() <= 0 {
-				delete(upstream.mgr.queueUpstreams, qid)
-				deletedTotal++
-			}
 		}
 	}
 	result = upstream.info()
 	result["num"] = len(queueIDs)
 	result["deleted"] = deleted
-	result["deleted_total"] = deletedTotal
 	result["_cost_ms_"] = utils.SinceMS(t)
 	return
 }
 
 // GetRequest TODO
-func (upstream *Upstream) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
+func (upstream *Upstream) GetRequest(qid pod.QueueID) (req *request.Request, qsize int64, err error) {
 	upstream.RLock()
 	defer upstream.RUnlock()
+	if upstream.status != UpstreamWorking {
+		err = UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
+		return
+	}
 	q := upstream.queues.Get(qid.ItemID())
 	if q == nil {
 		err = NotExistError(qid.String())
+		return
 	}
 	queue := q.(*Queue)
-	// var qsize int64
-	req, _, err = queue.Get()
+	return queue.Get()
 
-	return
 }
