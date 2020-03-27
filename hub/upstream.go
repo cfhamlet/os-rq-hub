@@ -49,7 +49,7 @@ func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err
 	if err == nil {
 		var parsedURL *url.URL
 		parsedURL, err = url.Parse(storeMeta.API)
-		storeMeta.parsedAPI = parsedURL
+		storeMeta.ParsedAPI = parsedURL
 	}
 	return
 }
@@ -58,7 +58,7 @@ func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err
 type UpstreamMeta struct {
 	ID        UpstreamID `json:"id" binding:"required"`
 	API       string     `json:"api" binding:"required"`
-	parsedAPI *url.URL
+	ParsedAPI *url.URL
 }
 
 // NewUpstreamStoreMeta TODO
@@ -315,10 +315,7 @@ func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
 	upstream.RLock()
 	defer upstream.RUnlock()
 	q := upstream.queues.Get(qid.ItemID())
-	if q == nil {
-		return false
-	}
-	return true
+	return q != nil
 }
 
 func (upstream *Upstream) deleteQueue(qid pod.QueueID) bool {

@@ -245,13 +245,13 @@ func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result Result, err erro
 func (mgr *UpstreamManager) AddUpstream(storeMeta *UpstreamStoreMeta) (result Result, err error) {
 	mgr.Lock()
 	defer mgr.Unlock()
-	if storeMeta.parsedAPI == nil {
+	if storeMeta.ParsedAPI == nil {
 		var parsedURL *url.URL
 		parsedURL, err = url.Parse(storeMeta.API)
 		if err != nil {
 			return
 		}
-		storeMeta.parsedAPI = parsedURL
+		storeMeta.ParsedAPI = parsedURL
 	}
 	_, err = mgr.addUpstream(storeMeta)
 	if err == nil {
@@ -365,7 +365,6 @@ func (mgr *UpstreamManager) DeleteOutdated(ids []UpstreamID, qid pod.QueueID, ts
 		}
 		upstream.deleteOutdated(qid, ts)
 	}
-	return
 }
 
 // GetRequest TODO

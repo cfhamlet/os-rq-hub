@@ -72,7 +72,7 @@ func (e APIError) Error() string {
 func (task *UpdateQueuesTask) apiPath(path string) (api string, err error) {
 	u, err := url.Parse(path)
 	if err == nil {
-		api = task.upstream.parsedAPI.ResolveReference(u).String()
+		api = task.upstream.ParsedAPI.ResolveReference(u).String()
 	}
 
 	return

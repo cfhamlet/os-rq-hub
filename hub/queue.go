@@ -34,7 +34,7 @@ func NewQueueMeta(qid pod.QueueID, qsize int64) *QueueMeta {
 }
 
 func (queue *Queue) apiPath() string {
-	return queue.upstream.parsedAPI.ResolveReference(queue.apiEndpoint).String()
+	return queue.upstream.ParsedAPI.ResolveReference(queue.apiEndpoint).String()
 }
 
 // NewQueue TODO
@@ -55,10 +55,6 @@ func (queue *Queue) incrDequeuing(n int64) int64 {
 }
 func (queue *Queue) decrDequeuing(n int64) int64 {
 	return atomic.AddInt64(&(queue.dequeuing), 0-n)
-}
-
-func (queue *Queue) incr(n int64) int64 {
-	return atomic.AddInt64(&(queue.qsize), n)
 }
 
 func (queue *Queue) decr(n int64) int64 {
