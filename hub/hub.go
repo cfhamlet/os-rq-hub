@@ -302,7 +302,7 @@ func (hub *Hub) AddUpstream(storeMeta *UpstreamStoreMeta) (Result, error) {
 func (hub *Hub) GetRequest(qid pod.QueueID) (req *request.Request, err error) {
 	hub.RLock()
 	defer hub.RUnlock()
-	if !workStatus(hub.status) && hub.status != Working {
+	if hub.status != Working {
 		err = UnavailableError(hub.status)
 		return
 	}
