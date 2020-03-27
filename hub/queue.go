@@ -2,10 +2,13 @@ package hub
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/url"
 	"sync/atomic"
+	"time"
 
-	"github.com/cfhamlet/os-rq-pod/pkg/log"
+	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
@@ -22,6 +25,7 @@ type Queue struct {
 	*QueueMeta
 	dequeuing   int64
 	apiEndpoint *url.URL
+	updateTime  time.Time
 }
 
 // NewQueueMeta TODO
@@ -35,11 +39,11 @@ func (queue *Queue) apiPath() string {
 
 // NewQueue TODO
 func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
-	endpoint, err := url.Parse(fmt.Sprintf("queue/?k%s", meta.ID))
+	endpoint, err := url.Parse(fmt.Sprintf("request/pop/?q=%s", meta.ID))
 	if err != nil {
 		panic(err)
 	}
-	return &Queue{upstream, meta, 0, endpoint}
+	return &Queue{upstream, meta, 0, endpoint, time.Now()}
 }
 
 // ItemID TODO
@@ -71,6 +75,35 @@ func (queue *Queue) QueueSize() int64 {
 }
 
 func (queue *Queue) getRequest() (req *request.Request, err error) {
+	r, err := http.NewRequest(
+		"POST",
+		queue.apiPath(),
+		nil,
+	)
+	if err != nil {
+		err = APIError{"new request", err}
+		return
+	}
+	resp, err := queue.upstream.client.Do(r)
+	if err != nil {
+		err = APIError{"response", err}
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 200 {
+		var body []byte
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			err = APIError{"read", err}
+			return
+		}
+		req = &request.Request{}
+		err = json.Unmarshal(body, &req)
+	} else if resp.StatusCode == 404 {
+		err = NotExistError(queue.ID.String())
+	} else {
+		err = UnavailableError(queue.ID.String())
+	}
 	return
 }
 
@@ -86,16 +119,8 @@ func (queue *Queue) Get() (req *request.Request, qsize int64, err error) {
 	defer queue.decrDequeuing(1)
 	qsize = queue.QueueSize()
 
-	status := queue.upstream.status
-	if status != UpstreamWorking {
-		err = UnavailableError(fmt.Sprintf("%s %s", queue.upstream.ID, status))
-		return
-	}
-
-	if dequeuing > qsize || dequeuing > 198405 {
-		msg := fmt.Sprintf("<upstream %s> %s qsize %d, dequeuing %d",
-			queue.upstream.ID, queue.ID, qsize, dequeuing)
-		log.Logger.Debug(msg)
+	if dequeuing > qsize || dequeuing > 1984 {
+		msg := fmt.Sprintf("%s qsize %d, dequeuing %d", queue.ID, qsize, dequeuing)
 		err = UnavailableError(msg)
 		return
 	}
