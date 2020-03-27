@@ -1,0 +1,23 @@
+debug: true
+
+log:
+  level: "info"
+
+http:
+  addr: "0.0.0.0:6788"
+  log:
+    enable: true
+  api:
+    path: "api"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  max_mem_limit: 102400
+
+limit:
+  redis:
+    memory: 102400
+  queue:
+    num: 1000
