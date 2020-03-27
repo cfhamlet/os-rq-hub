@@ -106,7 +106,8 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 		err = APIError{fmt.Sprintf("http code %d", resp.StatusCode), nil}
 		return
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	var body []byte
+	body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		err = APIError{"read", err}
 		return
@@ -245,7 +246,7 @@ func (task *UpdateQueuesTask) clear() {
 					}
 				},
 			)
-			_, _ = upstream.mgr.DeleteUpstreamQueues(upstream.ID, toBeDeleted)
+			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)
 		}
 		status = UpstreamRemoved
 		log.Logger.Debug(task.logFormat("clear finished"))
