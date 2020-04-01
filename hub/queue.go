@@ -10,12 +10,13 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
+	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
 // QueueMeta TODO
 type QueueMeta struct {
-	ID    pod.QueueID
+	ID    sth.QueueID
 	qsize int64
 }
 
@@ -29,12 +30,8 @@ type Queue struct {
 }
 
 // NewQueueMeta TODO
-func NewQueueMeta(qid pod.QueueID, qsize int64) *QueueMeta {
+func NewQueueMeta(qid sth.QueueID, qsize int64) *QueueMeta {
 	return &QueueMeta{qid, qsize}
-}
-
-func (queue *Queue) apiPath() string {
-	return queue.upstream.ParsedAPI.ResolveReference(queue.apiEndpoint).String()
 }
 
 // NewQueue TODO
@@ -50,9 +47,15 @@ func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
 func (queue *Queue) ItemID() uint64 {
 	return queue.ID.ItemID()
 }
+
+func (queue *Queue) apiPath() string {
+	return queue.upstream.ParsedAPI.ResolveReference(queue.apiEndpoint).String()
+}
+
 func (queue *Queue) incrDequeuing(n int64) int64 {
 	return atomic.AddInt64(&(queue.dequeuing), n)
 }
+
 func (queue *Queue) decrDequeuing(n int64) int64 {
 	return atomic.AddInt64(&(queue.dequeuing), 0-n)
 }
@@ -96,9 +99,9 @@ func (queue *Queue) getRequest() (req *request.Request, err error) {
 		req = &request.Request{}
 		err = json.Unmarshal(body, &req)
 	} else if resp.StatusCode == 404 {
-		err = NotExistError(queue.ID.String())
+		err = pod.NotExistError(queue.ID.String())
 	} else {
-		err = UnavailableError(queue.ID.String())
+		err = pod.UnavailableError(queue.ID.String())
 	}
 	return
 }
@@ -109,15 +112,15 @@ func (queue *Queue) Idle() bool {
 		queue.upstream.status != UpstreamWorking
 }
 
-// Get TODO
-func (queue *Queue) Get() (req *request.Request, qsize int64, err error) {
+// Pop TODO
+func (queue *Queue) Pop() (req *request.Request, qsize int64, err error) {
 	dequeuing := queue.incrDequeuing(1)
 	defer queue.decrDequeuing(1)
 	qsize = queue.QueueSize()
 
 	if dequeuing > qsize || dequeuing > 1984 {
 		msg := fmt.Sprintf("%s qsize %d, dequeuing %d", queue.ID, qsize, dequeuing)
-		err = UnavailableError(msg)
+		err = pod.UnavailableError(msg)
 		return
 	}
 

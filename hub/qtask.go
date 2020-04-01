@@ -11,6 +11,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
@@ -113,7 +114,7 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 		return
 	}
 
-	result := Result{}
+	result := sth.Result{}
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return
@@ -122,7 +123,7 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 	return
 }
 
-func (task *UpdateQueuesTask) queuesFromResult(result Result) (qMetas []*QueueMeta, err error) {
+func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*QueueMeta, err error) {
 	qMetas = []*QueueMeta{}
 	qs, ok := result["queues"]
 	if !ok {
@@ -191,7 +192,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 		return
 	}
 
-	var result Result
+	var result sth.Result
 	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
 	if err != nil {
 		log.Logger.Error(task.logFormat("%v", err))
@@ -213,7 +214,7 @@ func (task *UpdateQueuesTask) run() {
 
 	for {
 		for _, call := range task.operations {
-			if stopUpstreamStatus(task.upstream.status) {
+			if StopUpstreamStatus(task.upstream.status) {
 				goto Done
 			}
 			call()
@@ -235,15 +236,16 @@ func (task *UpdateQueuesTask) clear() {
 			if upstream.queues.Size() <= 0 {
 				break
 			}
-			toBeDeleted := []pod.QueueID{}
-			iter := slicemap.NewFastIter(upstream.queues)
+			toBeDeleted := []sth.QueueID{}
+			iter := slicemap.NewBaseIter(upstream.queues.Map)
 			iter.Iter(
-				func(item slicemap.Item) {
+				func(item slicemap.Item) bool {
 					queue := item.(*Queue)
 					toBeDeleted = append(toBeDeleted, queue.ID)
 					if len(toBeDeleted) >= 100 {
-						iter.Break()
+						return false
 					}
+					return true
 				},
 			)
 			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)

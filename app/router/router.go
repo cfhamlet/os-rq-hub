@@ -7,36 +7,28 @@ import (
 )
 
 // InitAPIRouter TODO
-func InitAPIRouter(g ginserv.RouterGroup, hub *core.Hub) {
+func InitAPIRouter(g ginserv.RouterGroup, serv *core.Core) {
+	ctrl := controller.New(serv)
 
-	routers := []struct {
-		HTTPFunc ginserv.IRoutesHTTPFunc
-		Path     string
-		F        controller.CtrlFunc
-	}{
-		{g.POST, "/queues/", controller.Queues},
+	routers := []ginserv.RouterRecord{
+		{M: g.POST, P: "/queues/", H: ctrl.Queues},
 
-		{g.GET, "/system/info/", controller.Info},
-		{g.GET, "/system/info/process/memory/", controller.ProcessMemory},
-		{g.GET, "/system/info/redis/memory/", controller.RedisMemory},
-		{g.GET, "/system/info/redis/", controller.RedisInfo},
+		{M: g.GET, P: "/system/info/", H: ctrl.Info},
+		{M: g.GET, P: "/system/info/process/memory/", H: ctrl.ProcessMemory},
+		{M: g.GET, P: "/system/info/redis/", H: ctrl.RedisInfo},
 
-		{g.POST, "/upstream/", controller.AddUpstream},
-		{g.DELETE, "/upstream/", controller.DeleteUpstream},
-		{g.GET, "/upstream/resume/", controller.ResumeUpstream},
-		{g.GET, "/upstream/pause/", controller.PauseUpstream},
-		{g.GET, "/upstream/info/", controller.UpstreamInfo},
-		{g.GET, "/upstreams/", controller.Upstreams},
+		{M: g.POST, P: "/upstream/", H: ctrl.AddUpstream},
+		{M: g.DELETE, P: "/upstream/", H: ctrl.DeleteUpstream},
+		{M: g.GET, P: "/upstream/resume/", H: ctrl.ResumeUpstream},
+		{M: g.GET, P: "/upstream/pause/", H: ctrl.PauseUpstream},
+		{M: g.GET, P: "/upstream/info/", H: ctrl.UpstreamInfo},
+		{M: g.GET, P: "/upstreams/", H: ctrl.Upstreams},
 
-		{g.GET, "/downstream/info/", controller.DownstreamInfo},
-		{g.GET, "/downstreams/", controller.Downstreams},
+		{M: g.GET, P: "/downstream/info/", H: ctrl.DownstreamInfo},
+		{M: g.GET, P: "/downstreams/", H: ctrl.Downstreams},
 
-		{g.POST, "/request/pop/", controller.GetRequest},
+		{M: g.POST, P: "/request/pop/", H: ctrl.PopRequest},
 	}
 
-	wp := controller.NewHandlerWrapper(hub)
-
-	for _, r := range routers {
-		r.HTTPFunc(r.Path, wp.Wrap(r.F))
-	}
+	ginserv.Bind(routers, controller.ErrorCode)
 }

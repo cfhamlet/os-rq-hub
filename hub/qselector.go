@@ -5,82 +5,34 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 )
 
 // QueuesSelector TODO
 type QueuesSelector interface {
-	Select() []Result
-}
-
-// EmptySelector TODO
-type EmptySelector struct {
-}
-
-// Select TODO
-func (selector *EmptySelector) Select() []Result {
-	return []Result{}
-}
-
-var emptySelector = &EmptySelector{}
-
-// AllSelector TODO
-type AllSelector struct {
-	mgr *UpstreamManager
-}
-
-// NewAllSelector TODO
-func NewAllSelector(mgr *UpstreamManager) *AllSelector {
-	return &AllSelector{mgr}
-}
-
-// Select TODO
-func (selector *AllSelector) Select() []Result {
-	mgr := selector.mgr
-	out := make([]Result, 0, len(mgr.queueUpstreams))
-	for qid, upstreams := range mgr.queueUpstreams {
-		r := Result{"qid": qid}
-		var qsize int64 = 0
-		iter := slicemap.NewFastIter(upstreams)
-		iter.Iter(
-			func(item slicemap.Item) {
-				upstream := item.(*Upstream)
-				queue := upstream.queues.Get(qid.ItemID())
-				if queue != nil {
-					qsize += (queue.(*Queue)).qsize
-				}
-			},
-		)
-		r["qsize"] = qsize
-		out = append(out, r)
-	}
-	return out
+	Select() []sth.Result
 }
 
 // CycleCountIter TODO
 type CycleCountIter struct {
-	cycle *slicemap.CycleIter
+	cycle *slicemap.CycleStepIter
 	count int
 }
 
 // NewCycleCountIter TODO
 func NewCycleCountIter(m *slicemap.Map, start, steps int) *CycleCountIter {
-	return &CycleCountIter{slicemap.NewCycleIter(m, start, steps), 0}
+	return &CycleCountIter{slicemap.NewCycleStepIter(m, start, steps), 0}
 }
 
 // Iter TODO
-func (iter *CycleCountIter) Iter(f func(slicemap.Item)) {
+func (iter *CycleCountIter) Iter(f slicemap.IterFunc) {
 	iter.cycle.Iter(
-		func(item slicemap.Item) {
-			f(item)
+		func(item slicemap.Item) bool {
+			r := f(item)
 			iter.count++
+			return r
 		},
 	)
-}
-
-// Break TODO
-func (iter *CycleCountIter) Break() {
-	iter.cycle.Break()
 }
 
 // RandSelector TODO
@@ -88,9 +40,9 @@ type RandSelector struct {
 	mgr       *UpstreamManager
 	r         *rand.Rand
 	k         int
-	selected  map[pod.QueueID]Result
+	selected  map[sth.QueueID]sth.Result
 	iterators map[UpstreamID]*CycleCountIter
-	out       []Result
+	out       []sth.Result
 }
 
 // NewRandSelector TODO
@@ -100,23 +52,23 @@ func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
 		mgr,
 		r,
 		k,
-		map[pod.QueueID]Result{},
+		map[sth.QueueID]sth.Result{},
 		map[UpstreamID]*CycleCountIter{},
-		make([]Result, 0, k),
+		make([]sth.Result, 0, k),
 	}
 }
 
 // Select TODO
-func (selector *RandSelector) Select() []Result {
+func (selector *RandSelector) Select() []sth.Result {
 	upstreams := selector.mgr.statusUpstreams[UpstreamWorking]
 	l := upstreams.Size()
-	choices := make([]*Upstream, 0, l)
+	choices := make([]*Upstream, 0)
 
 	start := selector.r.Intn(l)
-	iterator := slicemap.NewCycleIter(upstreams, start, l)
+	iterator := slicemap.NewCycleIter(upstreams.Map, start)
 
 	iterator.Iter(
-		func(item slicemap.Item) {
+		func(item slicemap.Item) bool {
 			n := selector.k / l
 			if n <= 0 {
 				n = 1
@@ -127,8 +79,9 @@ func (selector *RandSelector) Select() []Result {
 				l--
 			}
 			if selector.k <= 0 || l <= 0 {
-				iterator.Break()
+				return false
 			}
+			return true
 		},
 	)
 
@@ -157,17 +110,17 @@ func (selector *RandSelector) choice(upstream *Upstream, n int) bool {
 		return true
 	}
 	if !ok {
-		iterator = NewCycleCountIter(upstream.queues, selector.r.Intn(l), n)
+		iterator = NewCycleCountIter(upstream.queues.Map, selector.r.Intn(l), n)
 	} else {
 		iterator.cycle.SetSteps(n)
 	}
 
 	iterator.Iter(
-		func(item slicemap.Item) {
+		func(item slicemap.Item) bool {
 			queue := item.(*Queue)
 			result, ok := selector.selected[queue.ID]
 			if !ok {
-				result = Result{"qid": queue.ID, "qsize": queue.qsize}
+				result = sth.Result{"qid": queue.ID, "qsize": queue.qsize}
 				selector.selected[queue.ID] = result
 				selector.out = append(selector.out, result)
 				selector.k--
@@ -175,8 +128,9 @@ func (selector *RandSelector) choice(upstream *Upstream, n int) bool {
 				result["qsize"] = queue.qsize + result["qsize"].(int64)
 			}
 			if iterator.count+1 >= l {
-				iterator.Break()
+				return false
 			}
+			return true
 		},
 	)
 
