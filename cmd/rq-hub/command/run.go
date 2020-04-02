@@ -25,7 +25,7 @@ func run(conf *viper.Viper) {
 		return conf, err
 	}
 
-	hubLifecycle := func(lc fx.Lifecycle, hub *core.Hub, r *runner.Runner) {
+	hubLifecycle := func(lc fx.Lifecycle, hub *core.Core, r *runner.Runner) {
 		runner.ServeFlowLifecycle(lc, hub, r)
 	}
 
@@ -36,7 +36,7 @@ func run(conf *viper.Viper) {
 			runner.New,
 			newConfig,
 			utils.NewRedisClient,
-			core.NewHub,
+			core.New,
 			ginserv.NewEngine,
 			ginserv.NewServer,
 			ginserv.NewAPIGroup,

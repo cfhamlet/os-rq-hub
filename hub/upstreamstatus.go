@@ -74,3 +74,18 @@ func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
 	*s = t
 	return nil
 }
+
+// WorkUpstreamStatus TODO
+func WorkUpstreamStatus(status UpstreamStatus) bool {
+	return status == UpstreamWorking ||
+		status == UpstreamPaused ||
+		status == UpstreamUnavailable
+}
+
+// StopUpstreamStatus TODO
+func StopUpstreamStatus(status UpstreamStatus) bool {
+	return status == UpstreamStopping ||
+		status == UpstreamStopped ||
+		status == UpstreamRemoving ||
+		status == UpstreamRemoved
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pod"
 )
 
@@ -113,7 +114,7 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 		return
 	}
 
-	result := Result{}
+	result := sth.Result{}
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return
@@ -122,7 +123,7 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 	return
 }
 
-func (task *UpdateQueuesTask) queuesFromResult(result Result) (qMetas []*QueueMeta, err error) {
+func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*QueueMeta, err error) {
 	qMetas = []*QueueMeta{}
 	qs, ok := result["queues"]
 	if !ok {
@@ -157,46 +158,43 @@ func (task *UpdateQueuesTask) queuesFromResult(result Result) (qMetas []*QueueMe
 		}
 	}
 	if err == nil {
-		log.Logger.Debugf(task.logFormat("parse queues num: %d new: %d", num, new))
+		log.Logger.Debugf(task.upstream.logFormat("parse queues num: %d new: %d", num, new))
 	}
 	return
-}
-
-func (task *UpdateQueuesTask) logFormat(format string, args ...interface{}) string {
-	msg := fmt.Sprintf(format, args...)
-	return fmt.Sprintf("<upstream %s> %s", task.upstream.ID, msg)
 }
 
 func (task *UpdateQueuesTask) updateQueues() {
 	upstream := task.upstream
 	status := upstream.Status()
 	if status == UpstreamPaused {
-		log.Logger.Warningf(task.logFormat("paused"))
+		log.Logger.Warningf(task.upstream.logFormat("paused"))
 		return
 	}
 	queues, err := task.getQueueMetas()
 	if err != nil {
 		switch err.(type) {
 		case APIError:
-			_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+			if upstream.Status() != UpstreamUnavailable {
+				_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+			}
 		}
-		log.Logger.Error(task.logFormat("%s", err))
+		log.Logger.Error(task.upstream.logFormat("%s", err))
 		return
 	}
 	if status == UpstreamUnavailable {
 		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamWorking)
 	}
 	if len(queues) <= 0 {
-		log.Logger.Warning(task.logFormat("0 queues"))
+		log.Logger.Warning(task.upstream.logFormat("0 queues"))
 		return
 	}
 
-	var result Result
+	var result sth.Result
 	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
 	if err != nil {
-		log.Logger.Error(task.logFormat("%v", err))
+		log.Logger.Error(task.upstream.logFormat("%v", err))
 	} else {
-		log.Logger.Debug(task.logFormat("%v", result))
+		log.Logger.Debug(task.upstream.logFormat("%v", result))
 	}
 }
 
@@ -213,7 +211,7 @@ func (task *UpdateQueuesTask) run() {
 
 	for {
 		for _, call := range task.operations {
-			if stopUpstreamStatus(task.upstream.status) {
+			if StopUpstreamStatus(task.upstream.status) {
 				goto Done
 			}
 			call()
@@ -229,30 +227,28 @@ func (task *UpdateQueuesTask) clear() {
 	opt := "stop"
 	status := UpstreamStopped
 	if upstream.Status() == UpstreamRemoving {
-		log.Logger.Debug(task.logFormat("start clearing queues %d",
+		log.Logger.Debug(task.upstream.logFormat("start clearing queues %d",
 			upstream.queues.Size()))
 		for {
 			if upstream.queues.Size() <= 0 {
 				break
 			}
-			toBeDeleted := []pod.QueueID{}
-			iter := slicemap.NewFastIter(upstream.queues)
+			toBeDeleted := []sth.QueueID{}
+			iter := slicemap.NewBaseIter(upstream.queues.Map)
 			iter.Iter(
-				func(item slicemap.Item) {
+				func(item slicemap.Item) bool {
 					queue := item.(*Queue)
 					toBeDeleted = append(toBeDeleted, queue.ID)
-					if len(toBeDeleted) >= 100 {
-						iter.Break()
-					}
+					return len(toBeDeleted) < 100
 				},
 			)
 			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)
 		}
 		status = UpstreamRemoved
-		log.Logger.Debug(task.logFormat("clear finished"))
+		log.Logger.Debug(task.upstream.logFormat("clear finished"))
 	}
 	result, err := upstream.mgr.SetStatus(upstream.ID, status)
-	log.Logger.Info(task.logFormat("%s %v %v", opt, result, err))
+	log.Logger.Info(task.upstream.logFormat("%s %v %v", opt, result, err))
 }
 
 // Start TODO

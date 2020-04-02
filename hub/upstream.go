@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
+	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
+	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/cfhamlet/os-rq-pod/pod"
 	"github.com/go-redis/redis/v7"
@@ -22,18 +23,6 @@ type UpstreamID string
 // ItemID TODO
 func (id UpstreamID) ItemID() uint64 {
 	return fnv1a.HashString64(string(id))
-}
-func workUpstreamStatus(status UpstreamStatus) bool {
-	return status == UpstreamWorking ||
-		status == UpstreamPaused ||
-		status == UpstreamUnavailable
-}
-
-func stopUpstreamStatus(status UpstreamStatus) bool {
-	return status == UpstreamStopping ||
-		status == UpstreamStopped ||
-		status == UpstreamRemoving ||
-		status == UpstreamRemoved
 }
 
 // UpstreamStoreMeta TODO
@@ -74,28 +63,31 @@ func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
 
 // Upstream TODO
 type Upstream struct {
+	mgr *UpstreamManager
 	*UpstreamMeta
 	status UpstreamStatus
-	mgr    *UpstreamManager
-	queues *slicemap.Map
-	qtask  *UpdateQueuesTask
-	*sync.RWMutex
+	queues *slicemap.Viewer
 	client *http.Client
+	qtask  *UpdateQueuesTask
 }
 
 // NewUpstream TODO
 func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
 	upstream := &Upstream{
+		mgr,
 		meta,
 		UpstreamInit,
-		mgr,
-		slicemap.New(),
-		nil,
-		&sync.RWMutex{},
+		slicemap.NewViewer(nil),
 		&http.Client{},
+		nil,
 	}
 
 	return upstream
+}
+
+func (upstream *Upstream) logFormat(format string, args ...interface{}) string {
+	msg := fmt.Sprintf(format, args...)
+	return fmt.Sprintf("<upstream %s %s> %s", upstream.ID, upstream.status, msg)
 }
 
 func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
@@ -107,13 +99,14 @@ func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
 	return
 }
 
-func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
+// SetStatus TODO
+func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) (err error) {
 
 	oldStatus := upstream.status
 	if oldStatus == newStatus {
 		return
 	}
-	e := UnavailableError(oldStatus)
+	e := pod.UnavailableError(oldStatus)
 	switch oldStatus {
 	case UpstreamInit:
 	case UpstreamUnavailable:
@@ -161,30 +154,18 @@ func (upstream *Upstream) setStatus(newStatus UpstreamStatus) (err error) {
 	}
 
 	mgr := upstream.mgr
-	if workUpstreamStatus(newStatus) &&
+	if WorkUpstreamStatus(newStatus) &&
 		newStatus != UpstreamUnavailable &&
 		oldStatus != UpstreamUnavailable {
 		storeMeta := NewUpstreamStoreMeta(upstream)
 		storeMeta.Status = newStatus
-		err = saveMeta(mgr.hub.Client, storeMeta)
-		if err != nil {
-			return
-		}
+		err = saveMeta(mgr.core.Client(), storeMeta)
 	} else if newStatus == UpstreamRemoved {
-		_, err = mgr.hub.Client.HDel(RedisUpstreamsKey, string(upstream.ID)).Result()
+		_, err = mgr.core.Client().HDel(RedisUpstreamsKey, string(upstream.ID)).Result()
 	}
 
-	if err != nil {
-		return
-	}
-
-	upstream.status = newStatus
-	mgr.statusUpstreams[oldStatus].Delete(upstream.ItemID())
-	if newStatus != UpstreamRemoved {
-		mgr.upstreams[upstream.ID] = upstream
-		mgr.statusUpstreams[newStatus].Add(upstream)
-	} else {
-		delete(mgr.upstreams, upstream.ID)
+	if err == nil {
+		upstream.status = newStatus
 	}
 
 	return
@@ -197,14 +178,11 @@ func (upstream *Upstream) ItemID() uint64 {
 
 // Start TODO
 func (upstream *Upstream) Start() (err error) {
-	upstream.Lock()
-	defer upstream.Unlock()
-
 	if upstream.qtask != nil {
-		err = UnavailableError("already started")
+		err = pod.UnavailableError("already started")
 	} else {
-		if !workUpstreamStatus(upstream.status) {
-			err = upstream.setStatus(UpstreamWorking)
+		if !WorkUpstreamStatus(upstream.status) {
+			err = upstream.mgr.setStatus(upstream, UpstreamWorking)
 		}
 		if err == nil {
 			upstream.qtask = NewUpdateQueuesTask(upstream)
@@ -221,17 +199,17 @@ func (upstream *Upstream) Destory() (err error) {
 }
 
 func (upstream *Upstream) teardown(status UpstreamStatus) (err error) {
-	upstream.Lock()
-	defer upstream.Unlock()
-
 	if upstream.qtask == nil ||
-		stopUpstreamStatus(upstream.status) {
+		StopUpstreamStatus(upstream.status) {
+		log.Logger.Warningf(upstream.logFormat("can not teardown twice"))
 		return
 	}
 
-	err = upstream.setStatus(status)
+	err = upstream.mgr.setStatus(upstream, status)
 	if err == nil {
 		go upstream.qtask.Stop()
+	} else {
+		log.Logger.Errorf(upstream.logFormat("teardown %s", err))
 	}
 
 	return
@@ -242,67 +220,54 @@ func (upstream *Upstream) Stop() (err error) {
 	return upstream.teardown(UpstreamStopping)
 }
 
-func (upstream *Upstream) info() (result Result) {
-	return Result{
+// Info TODO
+func (upstream *Upstream) Info() (result sth.Result) {
+	return sth.Result{
 		"id":     upstream.ID,
 		"api":    upstream.API,
 		"status": upstream.status,
-		"queues_stats": Result{
+		"queues": sth.Result{
 			"total": upstream.queues.Size(),
 		},
 	}
 }
 
-// Info TODO
-func (upstream *Upstream) Info() (result Result) {
-	upstream.RLock()
-	defer upstream.RUnlock()
-	return upstream.info()
-}
-
 // Status TODO
 func (upstream *Upstream) Status() UpstreamStatus {
-	upstream.RLock()
-	defer upstream.RUnlock()
 	return upstream.status
 }
 
-// SetStatus TODO
-func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) error {
-	upstream.Lock()
-	defer upstream.Unlock()
-	return upstream.setStatus(newStatus)
-}
-
 // UpdateQueues TODO
-func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result Result) {
+func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result sth.Result) {
 	t := time.Now()
-	upstream.Lock()
-	defer upstream.Unlock()
 	new := 0
 	newTotal := 0
 	for _, meta := range qMetas {
-		queue := upstream.queues.Get(meta.ID.ItemID())
-		if queue == nil {
-			new++
-			queue := NewQueue(upstream, meta)
-			upstream.queues.Add(queue)
-			upstreams, ok := upstream.mgr.queueUpstreams[queue.ID]
-			if ok {
-				upstreams.Add(upstream)
-				continue
-			}
-			newTotal++
-			upstreams = slicemap.New()
-			upstreams.Add(upstream)
-			upstream.mgr.queueUpstreams[queue.ID] = upstreams
-		} else {
+		iid := meta.ID.ItemID()
+		queue := upstream.queues.Get(iid)
+		if queue != nil {
 			q := queue.(*Queue)
 			q.qsize = meta.qsize
 			q.updateTime = time.Now()
+			continue
 		}
+		new++
+		upstream.queues.Add(NewQueue(upstream, meta))
+		upstream.mgr.queueBulk.GetOrAdd(iid,
+			func(item slicemap.Item) slicemap.Item {
+				if item == nil {
+					newTotal++
+					pack := NewPack(meta.ID)
+					pack.Add(upstream)
+					return pack
+				}
+				pack := item.(*QueueUpstreamsPack)
+				pack.Add(upstream)
+				return nil
+			},
+		)
 	}
-	result = upstream.info()
+	result = upstream.Info()
 	result["num"] = len(qMetas)
 	result["new"] = new
 	result["new_total"] = newTotal
@@ -311,73 +276,76 @@ func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result Result) {
 }
 
 // ExistQueueID TODO
-func (upstream *Upstream) ExistQueueID(qid pod.QueueID) bool {
-	upstream.RLock()
-	defer upstream.RUnlock()
-	q := upstream.queues.Get(qid.ItemID())
-	return q != nil
+func (upstream *Upstream) ExistQueueID(qid sth.QueueID) bool {
+	return nil != upstream.queues.Get(qid.ItemID())
 }
 
-func (upstream *Upstream) deleteQueue(qid pod.QueueID) bool {
-	if upstream.queues.Delete(qid.ItemID()) {
-		upstreams, ok := upstream.mgr.queueUpstreams[qid]
-		if ok {
-			upstreams.Delete(upstream.ItemID())
-			if upstreams.Size() <= 0 {
-				delete(upstream.mgr.queueUpstreams, qid)
+func (upstream *Upstream) deleteQueue(qid sth.QueueID) bool {
+	iid := qid.ItemID()
+	if upstream.queues.Delete(iid) {
+		upstream.mgr.queueBulk.GetAndDelete(iid,
+			func(item slicemap.Item) bool {
+				pack := item.(*QueueUpstreamsPack)
+				pack.Delete(upstream.ItemID())
+				return pack.Size() <= 0
+			},
+		)
+	}
+	return false
+}
+
+func (upstream *Upstream) deleteOutdated(qid sth.QueueID, ts time.Time) bool {
+	iid := qid.ItemID()
+	return upstream.queues.GetAndDelete(iid,
+		func(item slicemap.Item) bool {
+			queue := item.(*Queue)
+			if ts.Sub(queue.updateTime) > 0 {
+				upstream.mgr.queueBulk.GetAndDelete(iid,
+					func(item slicemap.Item) bool {
+						pack := item.(*QueueUpstreamsPack)
+						pack.Delete(upstream.ItemID())
+						return pack.Size() <= 0
+					},
+				)
+				return true
 			}
-		}
-		return true
-	}
-	return false
-}
-
-func (upstream *Upstream) deleteOutdated(qid pod.QueueID, ts time.Time) bool {
-	q := upstream.queues.Get(qid.ItemID())
-	if q == nil {
-		return true
-	}
-	queue := q.(*Queue)
-	if ts.Sub(queue.updateTime) > 0 {
-		return upstream.deleteQueue(qid)
-	}
-	return false
+			return false
+		},
+	)
 }
 
 // DeleteQueues TODO
-func (upstream *Upstream) DeleteQueues(queueIDs []pod.QueueID) (result Result) {
+func (upstream *Upstream) DeleteQueues(queueIDs []sth.QueueID) (result sth.Result) {
 	t := time.Now()
-	upstream.Lock()
-	defer upstream.Unlock()
 
 	deleted := 0
-
 	for _, qid := range queueIDs {
 		if upstream.deleteQueue(qid) {
 			deleted++
 		}
 	}
-	result = upstream.info()
+	result = upstream.Info()
 	result["num"] = len(queueIDs)
 	result["deleted"] = deleted
 	result["_cost_ms_"] = utils.SinceMS(t)
 	return
 }
 
-// GetRequest TODO
-func (upstream *Upstream) GetRequest(qid pod.QueueID) (req *request.Request, qsize int64, err error) {
-	upstream.RLock()
-	defer upstream.RUnlock()
+// PopRequest TODO
+func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsize int64, err error) {
 	if upstream.status != UpstreamWorking {
-		err = UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
+		err = pod.UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
 		return
 	}
-	q := upstream.queues.Get(qid.ItemID())
-	if q == nil {
-		err = NotExistError(qid.String())
-		return
-	}
-	queue := q.(*Queue)
-	return queue.Get()
-
+	upstream.queues.View(qid.ItemID(),
+		func(item slicemap.Item) {
+			if item == nil {
+				err = pod.NotExistError(qid.String())
+				return
+			}
+			queue := item.(*Queue)
+			req, qsize, err = queue.Pop()
+		},
+	)
+	return
 }
