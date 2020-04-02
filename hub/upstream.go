@@ -287,10 +287,7 @@ func (upstream *Upstream) deleteQueue(qid sth.QueueID) bool {
 			func(item slicemap.Item) bool {
 				pack := item.(*QueueUpstreamsPack)
 				pack.Delete(upstream.ItemID())
-				if pack.Size() <= 0 {
-					return true
-				}
-				return false
+				return pack.Size() <= 0
 			},
 		)
 	}
@@ -307,10 +304,7 @@ func (upstream *Upstream) deleteOutdated(qid sth.QueueID, ts time.Time) bool {
 					func(item slicemap.Item) bool {
 						pack := item.(*QueueUpstreamsPack)
 						pack.Delete(upstream.ItemID())
-						if pack.Size() <= 0 {
-							return true
-						}
-						return false
+						return pack.Size() <= 0
 					},
 				)
 				return true

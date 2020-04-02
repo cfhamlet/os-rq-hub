@@ -239,10 +239,7 @@ func (task *UpdateQueuesTask) clear() {
 				func(item slicemap.Item) bool {
 					queue := item.(*Queue)
 					toBeDeleted = append(toBeDeleted, queue.ID)
-					if len(toBeDeleted) >= 100 {
-						return false
-					}
-					return true
+					return len(toBeDeleted) < 100
 				},
 			)
 			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)

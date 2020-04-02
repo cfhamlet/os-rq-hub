@@ -152,10 +152,7 @@ func (mgr *UpstreamManager) Start() (err error) {
 			func(item slicemap.Item) bool {
 				upstream := item.(*Upstream)
 				err = upstream.Start()
-				if err != nil {
-					return false
-				}
-				return true
+				return err == nil
 			},
 		)
 	}
@@ -173,14 +170,16 @@ func (mgr *UpstreamManager) Stop() {
 		iter.Iter(
 			func(item slicemap.Item) bool {
 				upstream := item.(*Upstream)
-				go mgr.withLockMustExist(upstream.ID,
-					func(upstream *Upstream) (sth.Result, error) {
-						err := upstream.Stop()
-						if err != nil {
-							log.Logger.Warning("stop upstream fail", upstream.ID, err)
-						}
-						return nil, err
-					}, false)
+				go func() {
+					_, _ = mgr.withLockMustExist(upstream.ID,
+						func(upstream *Upstream) (sth.Result, error) {
+							err := upstream.Stop()
+							if err != nil {
+								log.Logger.Warning("stop upstream fail", upstream.ID, err)
+							}
+							return nil, err
+						}, false)
+				}()
 				return true
 			},
 		)
@@ -188,16 +187,6 @@ func (mgr *UpstreamManager) Stop() {
 
 	mgr.waitStop.Wait()
 	mgr.core.waitStop.Done()
-}
-
-func (mgr *UpstreamManager) stopUpstream(id UpstreamID) (sth.Result, error) {
-	return mgr.doMustExist(id,
-		func(upstream *Upstream) (result sth.Result, err error) {
-			err = upstream.Stop()
-			result = upstream.Info()
-			return
-		},
-	)
 }
 
 // ResumeUpstream TODO
@@ -311,7 +300,7 @@ func (mgr *UpstreamManager) DeleteQueues(id UpstreamID, queueIDs []sth.QueueID) 
 // DeleteOutdated TODO
 func (mgr *UpstreamManager) DeleteOutdated(qid sth.QueueID, ids []UpstreamID, ts time.Time) {
 	for _, id := range ids {
-		mgr.withLockMustExist(id,
+		_, _ = mgr.withLockMustExist(id,
 			func(upstream *Upstream) (sth.Result, error) {
 				upstream.deleteOutdated(qid, ts)
 				return nil, nil
