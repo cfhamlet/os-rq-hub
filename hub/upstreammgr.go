@@ -55,7 +55,7 @@ func NewUpstreamManager(core *Core) *UpstreamManager {
 // Load TODO
 func (mgr *UpstreamManager) Load() (err error) {
 
-	log.Logger.Debug("load upstreams")
+	log.Logger.Debug("load upstreams start")
 
 	scanner := utils.NewScanner(mgr.core.Client(), "hscan", RedisUpstreamsKey, "*", 1000)
 	err = scanner.Scan(
@@ -165,15 +165,22 @@ func (mgr *UpstreamManager) Start() (err error) {
 
 // Stop TODO
 func (mgr *UpstreamManager) Stop() {
-	for _, upstreams := range mgr.statusUpstreams {
+	for status, upstreams := range mgr.statusUpstreams {
+		if StopUpstreamStatus(status) {
+			continue
+		}
 		iter := slicemap.NewBaseIter(upstreams.Map)
 		iter.Iter(
 			func(item slicemap.Item) bool {
 				upstream := item.(*Upstream)
-				err := upstream.Stop()
-				if err != nil {
-					log.Logger.Warning("stop upstream fail", upstream.ID, err)
-				}
+				go mgr.withLockMustExist(upstream.ID,
+					func(upstream *Upstream) (sth.Result, error) {
+						err := upstream.Stop()
+						if err != nil {
+							log.Logger.Warning("stop upstream fail", upstream.ID, err)
+						}
+						return nil, err
+					}, false)
 				return true
 			},
 		)
