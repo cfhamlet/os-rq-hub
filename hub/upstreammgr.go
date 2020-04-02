@@ -8,6 +8,7 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
+	"github.com/cfhamlet/os-rq-pod/pkg/serv"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
@@ -62,6 +63,10 @@ func (mgr *UpstreamManager) Load() (err error) {
 		func(keys []string) (err error) {
 			isKey := false
 			for _, key := range keys {
+				err = mgr.core.SetStatus(serv.Preparing, false)
+				if err != nil {
+					return
+				}
 				isKey = !isKey
 				if isKey {
 					continue
@@ -175,7 +180,7 @@ func (mgr *UpstreamManager) Stop() {
 						func(upstream *Upstream) (sth.Result, error) {
 							err := upstream.Stop()
 							if err != nil {
-								log.Logger.Warning("stop upstream fail", upstream.ID, err)
+								log.Logger.Warning(upstream.logFormat("stop fail %s", err))
 							}
 							return nil, err
 						}, false)
