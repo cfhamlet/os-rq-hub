@@ -40,7 +40,6 @@ LDFLAGS +=  -X "$(VERSIONMOD).gitStatus=$(GIT_STATUS)"
 LDFLAGS +=  -X "$(LOGMOD).rootLoggerName=$(ROOTLOGGER)"
 
 .PHONY: all
-all: clean
 all: build
 
 .PHONY: generate
