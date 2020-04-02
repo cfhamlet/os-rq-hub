@@ -64,7 +64,7 @@ func (ctrl *Controller) AddUpstream(c *gin.Context) (result sth.Result, err erro
 	if err = c.ShouldBindJSON(storeMeta); err != nil {
 		err = controller.InvalidBody(fmt.Sprintf("%s", err))
 	} else {
-		storeMeta.Status = core.UpstreamWorking
+		storeMeta.Status = core.UpstreamInit
 		result, err = ctrl.UpstreamMgr.AddUpstream(storeMeta)
 	}
 
@@ -104,6 +104,11 @@ func (ctrl *Controller) DeleteUpstream(c *gin.Context) (sth.Result, error) {
 // UpstreamInfo TODO
 func (ctrl *Controller) UpstreamInfo(c *gin.Context) (sth.Result, error) {
 	return operateUpstreamByQuery(c, ctrl.UpstreamMgr.UpstreamInfo)
+}
+
+// UpstreamsInfo TODO
+func (ctrl *Controller) UpstreamsInfo(c *gin.Context) (sth.Result, error) {
+	return ctrl.UpstreamMgr.Info(), nil
 }
 
 // Upstreams TODO

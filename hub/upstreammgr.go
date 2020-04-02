@@ -8,6 +8,7 @@ import (
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
+	"github.com/cfhamlet/os-rq-pod/pkg/serv"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
@@ -62,6 +63,10 @@ func (mgr *UpstreamManager) Load() (err error) {
 		func(keys []string) (err error) {
 			isKey := false
 			for _, key := range keys {
+				err = mgr.core.SetStatus(serv.Preparing, false)
+				if err != nil {
+					return
+				}
 				isKey = !isKey
 				if isKey {
 					continue
@@ -110,7 +115,12 @@ func (mgr *UpstreamManager) addUpstream(storeMeta *UpstreamStoreMeta) (upstream 
 		}
 	}
 	upstream = NewUpstream(mgr, storeMeta.UpstreamMeta)
-	err = mgr.setStatus(upstream, storeMeta.Status)
+	if storeMeta.Status == UpstreamInit {
+		err = mgr.setStatus(upstream, UpstreamWorking)
+	} else {
+		upstream.status = storeMeta.Status
+		mgr.statusUpstreams[storeMeta.Status].Add(upstream)
+	}
 	return
 }
 
@@ -175,7 +185,7 @@ func (mgr *UpstreamManager) Stop() {
 						func(upstream *Upstream) (sth.Result, error) {
 							err := upstream.Stop()
 							if err != nil {
-								log.Logger.Warning("stop upstream fail", upstream.ID, err)
+								log.Logger.Warning(upstream.logFormat("stop fail %s", err))
 							}
 							return nil, err
 						}, false)
@@ -234,7 +244,6 @@ func (mgr *UpstreamManager) Info() (result sth.Result) {
 func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
 	t := time.Now()
 	out := []sth.Result{}
-	total := mgr.queueBulk.Size()
 	if mgr.statusUpstreams[UpstreamWorking].Size() <= 0 {
 	} else {
 		selector := NewRandSelector(mgr, k)
@@ -244,7 +253,7 @@ func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
 		"k":         k,
 		"queues":    out,
 		"count":     len(out),
-		"total":     total,
+		"total":     mgr.queueBulk.Size(),
 		"_cost_ms_": utils.SinceMS(t),
 	}
 }
@@ -275,9 +284,6 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result sth.Result,
 	},
 	)
 	result["upstreams"] = out
-	result["queues"] = sth.Result{
-		"total": mgr.queueBulk.Size(),
-	}
 	return
 }
 
