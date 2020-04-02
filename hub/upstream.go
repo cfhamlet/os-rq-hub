@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
+	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
@@ -82,6 +83,11 @@ func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
 	}
 
 	return upstream
+}
+
+func (upstream *Upstream) logFormat(format string, args ...interface{}) string {
+	msg := fmt.Sprintf(format, args...)
+	return fmt.Sprintf("<upstream %s %s> %s", upstream.ID, upstream.status, msg)
 }
 
 func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
@@ -195,12 +201,15 @@ func (upstream *Upstream) Destory() (err error) {
 func (upstream *Upstream) teardown(status UpstreamStatus) (err error) {
 	if upstream.qtask == nil ||
 		StopUpstreamStatus(upstream.status) {
+		log.Logger.Warningf(upstream.logFormat("can not teardown twice"))
 		return
 	}
 
-	upstream.mgr.setStatus(upstream, status)
+	err = upstream.mgr.setStatus(upstream, status)
 	if err == nil {
 		go upstream.qtask.Stop()
+	} else {
+		log.Logger.Errorf(upstream.logFormat("teardown %s", err))
 	}
 
 	return
@@ -243,6 +252,7 @@ func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result sth.Result) 
 			continue
 		}
 		new++
+		upstream.queues.Add(NewQueue(upstream, meta))
 		upstream.mgr.queueBulk.GetOrAdd(iid,
 			func(item slicemap.Item) slicemap.Item {
 				if item == nil {
@@ -276,7 +286,7 @@ func (upstream *Upstream) deleteQueue(qid sth.QueueID) bool {
 		upstream.mgr.queueBulk.GetAndDelete(iid,
 			func(item slicemap.Item) bool {
 				pack := item.(*QueueUpstreamsPack)
-				pack.Delete(iid)
+				pack.Delete(upstream.ItemID())
 				if pack.Size() <= 0 {
 					return true
 				}
@@ -296,7 +306,7 @@ func (upstream *Upstream) deleteOutdated(qid sth.QueueID, ts time.Time) bool {
 				upstream.mgr.queueBulk.GetAndDelete(iid,
 					func(item slicemap.Item) bool {
 						pack := item.(*QueueUpstreamsPack)
-						pack.Delete(iid)
+						pack.Delete(upstream.ItemID())
 						if pack.Size() <= 0 {
 							return true
 						}
