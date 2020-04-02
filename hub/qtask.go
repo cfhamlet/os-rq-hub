@@ -158,46 +158,43 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 		}
 	}
 	if err == nil {
-		log.Logger.Debugf(task.logFormat("parse queues num: %d new: %d", num, new))
+		log.Logger.Debugf(task.upstream.logFormat("parse queues num: %d new: %d", num, new))
 	}
 	return
-}
-
-func (task *UpdateQueuesTask) logFormat(format string, args ...interface{}) string {
-	msg := fmt.Sprintf(format, args...)
-	return fmt.Sprintf("<upstream %s> %s", task.upstream.ID, msg)
 }
 
 func (task *UpdateQueuesTask) updateQueues() {
 	upstream := task.upstream
 	status := upstream.Status()
 	if status == UpstreamPaused {
-		log.Logger.Warningf(task.logFormat("paused"))
+		log.Logger.Warningf(task.upstream.logFormat("paused"))
 		return
 	}
 	queues, err := task.getQueueMetas()
 	if err != nil {
 		switch err.(type) {
 		case APIError:
-			_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+			if upstream.Status() != UpstreamUnavailable {
+				_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamUnavailable)
+			}
 		}
-		log.Logger.Error(task.logFormat("%s", err))
+		log.Logger.Error(task.upstream.logFormat("%s", err))
 		return
 	}
 	if status == UpstreamUnavailable {
 		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamWorking)
 	}
 	if len(queues) <= 0 {
-		log.Logger.Warning(task.logFormat("0 queues"))
+		log.Logger.Warning(task.upstream.logFormat("0 queues"))
 		return
 	}
 
 	var result sth.Result
 	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
 	if err != nil {
-		log.Logger.Error(task.logFormat("%v", err))
+		log.Logger.Error(task.upstream.logFormat("%v", err))
 	} else {
-		log.Logger.Debug(task.logFormat("%v", result))
+		log.Logger.Debug(task.upstream.logFormat("%v", result))
 	}
 }
 
@@ -230,7 +227,7 @@ func (task *UpdateQueuesTask) clear() {
 	opt := "stop"
 	status := UpstreamStopped
 	if upstream.Status() == UpstreamRemoving {
-		log.Logger.Debug(task.logFormat("start clearing queues %d",
+		log.Logger.Debug(task.upstream.logFormat("start clearing queues %d",
 			upstream.queues.Size()))
 		for {
 			if upstream.queues.Size() <= 0 {
@@ -251,10 +248,10 @@ func (task *UpdateQueuesTask) clear() {
 			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)
 		}
 		status = UpstreamRemoved
-		log.Logger.Debug(task.logFormat("clear finished"))
+		log.Logger.Debug(task.upstream.logFormat("clear finished"))
 	}
 	result, err := upstream.mgr.SetStatus(upstream.ID, status)
-	log.Logger.Info(task.logFormat("%s %v %v", opt, result, err))
+	log.Logger.Info(task.upstream.logFormat("%s %v %v", opt, result, err))
 }
 
 // Start TODO
