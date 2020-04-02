@@ -19,8 +19,8 @@ func InitAPIRouter(g ginserv.RouterGroup, serv *core.Core) {
 
 		{M: g.POST, P: "/upstream/", H: ctrl.AddUpstream},
 		{M: g.DELETE, P: "/upstream/", H: ctrl.DeleteUpstream},
-		{M: g.GET, P: "/upstream/resume/", H: ctrl.ResumeUpstream},
-		{M: g.GET, P: "/upstream/pause/", H: ctrl.PauseUpstream},
+		{M: g.POST, P: "/upstream/resume/", H: ctrl.ResumeUpstream},
+		{M: g.POST, P: "/upstream/pause/", H: ctrl.PauseUpstream},
 		{M: g.GET, P: "/upstream/info/", H: ctrl.UpstreamInfo},
 		{M: g.GET, P: "/upstreams/", H: ctrl.Upstreams},
 
