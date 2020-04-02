@@ -47,7 +47,7 @@ func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err
 type UpstreamMeta struct {
 	ID        UpstreamID `json:"id" binding:"required"`
 	API       string     `json:"api" binding:"required"`
-	ParsedAPI *url.URL
+	ParsedAPI *url.URL   `json:"-"`
 }
 
 // NewUpstreamStoreMeta TODO
@@ -96,6 +96,7 @@ func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
 	if err == nil {
 		_, err = client.HSet(RedisUpstreamsKey, string(meta.ID), string(metaJSON)).Result()
 	}
+	log.Logger.Debugf("save %s %v", metaJSON, err)
 	return
 }
 
@@ -155,8 +156,7 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) (err error) {
 
 	mgr := upstream.mgr
 	if WorkUpstreamStatus(newStatus) &&
-		newStatus != UpstreamUnavailable &&
-		oldStatus != UpstreamUnavailable {
+		newStatus != UpstreamUnavailable {
 		storeMeta := NewUpstreamStoreMeta(upstream)
 		storeMeta.Status = newStatus
 		err = saveMeta(mgr.core.Client(), storeMeta)
@@ -179,15 +179,15 @@ func (upstream *Upstream) ItemID() uint64 {
 // Start TODO
 func (upstream *Upstream) Start() (err error) {
 	if upstream.qtask != nil {
-		err = pod.UnavailableError("already started")
-	} else {
-		if !WorkUpstreamStatus(upstream.status) {
-			err = upstream.mgr.setStatus(upstream, UpstreamWorking)
-		}
-		if err == nil {
-			upstream.qtask = NewUpdateQueuesTask(upstream)
-			go upstream.qtask.Start()
-		}
+		log.Logger.Warning(upstream.logFormat("already started"))
+		return
+	}
+	if !WorkUpstreamStatus(upstream.status) {
+		err = upstream.mgr.setStatus(upstream, UpstreamWorking)
+	}
+	if err == nil {
+		upstream.qtask = NewUpdateQueuesTask(upstream)
+		go upstream.qtask.Start()
 	}
 
 	return
