@@ -226,9 +226,7 @@ func (upstream *Upstream) Info() (result sth.Result) {
 		"id":     upstream.ID,
 		"api":    upstream.API,
 		"status": upstream.status,
-		"queues": sth.Result{
-			"total": upstream.queues.Size(),
-		},
+		"queues": upstream.queues.Size(),
 	}
 }
 

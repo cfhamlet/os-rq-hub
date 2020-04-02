@@ -115,7 +115,12 @@ func (mgr *UpstreamManager) addUpstream(storeMeta *UpstreamStoreMeta) (upstream 
 		}
 	}
 	upstream = NewUpstream(mgr, storeMeta.UpstreamMeta)
-	err = mgr.setStatus(upstream, storeMeta.Status)
+	if storeMeta.Status == UpstreamInit {
+		err = mgr.setStatus(upstream, UpstreamWorking)
+	} else {
+		upstream.status = storeMeta.Status
+		mgr.statusUpstreams[storeMeta.Status].Add(upstream)
+	}
 	return
 }
 
@@ -239,7 +244,6 @@ func (mgr *UpstreamManager) Info() (result sth.Result) {
 func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
 	t := time.Now()
 	out := []sth.Result{}
-	total := mgr.queueBulk.Size()
 	if mgr.statusUpstreams[UpstreamWorking].Size() <= 0 {
 	} else {
 		selector := NewRandSelector(mgr, k)
@@ -249,7 +253,7 @@ func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
 		"k":         k,
 		"queues":    out,
 		"count":     len(out),
-		"total":     total,
+		"total":     mgr.queueBulk.Size(),
 		"_cost_ms_": utils.SinceMS(t),
 	}
 }
@@ -280,9 +284,6 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result sth.Result,
 	},
 	)
 	result["upstreams"] = out
-	result["queues"] = sth.Result{
-		"total": mgr.queueBulk.Size(),
-	}
 	return
 }
 

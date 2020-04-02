@@ -117,7 +117,7 @@ func (core *Core) Info() (sth.Result, error) {
 	result, err := core.DoWithLock(
 		func() (interface{}, error) {
 			result, err := core.MetaInfo()
-			result["upstream"] = core.UpstreamMgr.Info()
+			result["upstreams_info"] = core.UpstreamMgr.Info()
 			return result, err
 		}, true)
 	return result.(sth.Result), err
