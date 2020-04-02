@@ -25,7 +25,7 @@ type QueueBulk struct {
 
 // NewQueueBulk TODO
 func NewQueueBulk(mgr *UpstreamManager, bulkSize int) *QueueBulk {
-	bulk := make([]*slicemap.Viewer, bulkSize)
+	bulk := make([]*slicemap.Viewer, 0, bulkSize)
 	for i := 0; i < bulkSize; i++ {
 		bulk = append(bulk, slicemap.NewViewer(nil))
 	}
