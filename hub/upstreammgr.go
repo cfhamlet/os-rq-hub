@@ -33,6 +33,29 @@ type UpstreamManager struct {
 	*utils.BulkLock
 }
 
+// Setup TODO
+func (mgr *UpstreamManager) Setup() (err error) {
+	err = mgr.Load()
+	if err == nil {
+		_, err = mgr.core.DoWithLock(
+			func() (interface{}, error) {
+				err = mgr.core.SetStatus(serv.Preparing, false)
+				if err == nil {
+					mgr.core.UpstreamMgr = mgr
+					err = mgr.Start()
+				}
+				return nil, err
+			}, false)
+	}
+	return
+}
+
+// Cleanup TODO
+func (mgr *UpstreamManager) Cleanup() error {
+	mgr.Stop()
+	return nil
+}
+
 // NewUpstreamManager TODO
 func NewUpstreamManager(core *Core) *UpstreamManager {
 	statusUpstreams := map[UpstreamStatus]*slicemap.Viewer{}

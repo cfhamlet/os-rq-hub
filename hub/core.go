@@ -34,16 +34,18 @@ func New(conf *viper.Viper, client *redis.Client) (core *Core, err error) {
 // OnStart TODO
 func (core *Core) OnStart() (err error) {
 	err = core.SetStatus(serv.Preparing, true)
-	if err != nil {
-		return
+	if err == nil {
+		for name, ext := range map[string]serv.IExtension{
+			"upstream":   NewUpstreamManager(core),
+			"downstream": NewDownstreamManager(core),
+		} {
+			core.AddExtension(name, ext)
+		}
+		err = core.Setup()
 	}
 
-	err = core.initUpstreamMgr()
 	if err == nil {
-		err = core.initDownstreamMgr()
-		if err == nil {
-			err = core.SetStatus(serv.Working, true)
-		}
+		err = core.SetStatus(serv.Working, true)
 	}
 
 	switch err.(type) {
@@ -62,51 +64,15 @@ func (core *Core) OnStop() error {
 	_, err := core.DoWithLock(
 		func() (interface{}, error) {
 			err := core.SetStatus(serv.Stopping, false)
-			if err != nil {
-				return nil, err
-			}
-			if core.DownstreamMgr != nil {
-				core.DownstreamMgr.Stop()
-			}
-			if core.UpstreamMgr != nil {
-				core.UpstreamMgr.Stop()
-			}
-			core.waitStop.Wait()
-			err = core.SetStatus(serv.Stopped, false)
-			return nil, err
-
-		}, false)
-
-	return err
-}
-
-func (core *Core) initUpstreamMgr() error {
-	upstreamMgr := NewUpstreamManager(core)
-	err := upstreamMgr.Load()
-	if err == nil {
-		_, err = core.DoWithLock(
-			func() (interface{}, error) {
-				err = core.SetStatus(serv.Preparing, false)
-				if err == nil {
-					core.UpstreamMgr = upstreamMgr
-					err = core.UpstreamMgr.Start()
-				}
-				return nil, err
-			}, false)
-	}
-
-	return err
-}
-
-func (core *Core) initDownstreamMgr() error {
-	_, err := core.DoWithLock(
-		func() (interface{}, error) {
-			err := core.SetStatus(serv.Preparing, false)
 			if err == nil {
-				core.DownstreamMgr = NewDownstreamManager(core)
-				err = core.DownstreamMgr.Start()
+				err = core.Cleanup()
+				if err == nil {
+					core.waitStop.Wait()
+					err = core.SetStatus(serv.Stopped, false)
+				}
 			}
 			return nil, err
+
 		}, false)
 
 	return err
