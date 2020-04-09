@@ -9,8 +9,6 @@ github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d/go.mod h1:3eOhrU
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6/go.mod h1:grANhF5doyWs3UAsr3K4I6qtAmlQcZDesFNEHPZAzj8=
-github.com/aws/aws-sdk-go v1.30.7 h1:IaXfqtioP6p9SFAnNfsqdNczbR5UNbYqvcZUSsCAdTY=
-github.com/aws/aws-sdk-go v1.30.7/go.mod h1:5zCpMtNQVjRREroY7sYe8lOMRSxkhG6MZveU8YkpAk0=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
@@ -18,16 +16,6 @@ github.com/cfhamlet/os-go-netloc-rule v0.0.6 h1:MIuirhqo3P+0P4d0bClyItwWUXmzLWg4
 github.com/cfhamlet/os-go-netloc-rule v0.0.6/go.mod h1:QMsbtrspcBdLMgUDxOCkGzA/vjUmCUzWvyJoBzcy8JY=
 github.com/cfhamlet/os-go-rq v0.0.1 h1:stx89qSn+IIhAwX0txu92UBq9JQmYyLcoXQeGOklx68=
 github.com/cfhamlet/os-go-rq v0.0.1/go.mod h1:rxJdfcZjdImYUD6ZGkWRUSxJM3Wg/miQlcefCS/EtEg=
-github.com/cfhamlet/os-rq-pod v0.1.1 h1:YgR/snUvkYEpFC5B8n7OKGYQBey04Q5DFDfw6Zz/g80=
-github.com/cfhamlet/os-rq-pod v0.1.1/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
-github.com/cfhamlet/os-rq-pod v0.1.4 h1:i7gI0NChauK+r+49wARlkauXdu08ersYrALN/9oIeTc=
-github.com/cfhamlet/os-rq-pod v0.1.4/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
-github.com/cfhamlet/os-rq-pod v0.1.11 h1:iWBwT26miPe9XrtNLk2f6wFip7FfAoZqCO8Y+II3y/Y=
-github.com/cfhamlet/os-rq-pod v0.1.11/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
-github.com/cfhamlet/os-rq-pod v0.1.12 h1:zupt6M473Cv+dyfnUM46kobp0DViRvr4SvKyH21NX5M=
-github.com/cfhamlet/os-rq-pod v0.1.12/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
-github.com/cfhamlet/os-rq-pod v0.1.13 h1:UBlwqSVKi39PTosdKrTQM2l5jpwu+RZmBE6q5aK97a0=
-github.com/cfhamlet/os-rq-pod v0.1.13/go.mod h1:MJkSUD0mQaEXT0VZro6XIDKylV9i0gZP/pEyVpg27Rs=
 github.com/cfhamlet/os-rq-pod v0.2.1 h1:zv4EBPttcll9g8XpOkmJzi8z0T9WrR1Lu7159zFSb/Y=
 github.com/cfhamlet/os-rq-pod v0.2.1/go.mod h1:50lbZ3tg5yD32AObE8aGhFOeXHCi8MzeMQNLRBLtzQY=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
@@ -66,7 +54,6 @@ github.com/go-playground/universal-translator v0.16.0/go.mod h1:1AnU7NaIRDWWzGEK
 github.com/go-redis/redis/v7 v7.0.0-beta.4/go.mod h1:xhhSbUMTsleRPur+Vgx9sUHtyN33bdjxY+9/0n9Ig8s=
 github.com/go-redis/redis/v7 v7.2.0 h1:CrCexy/jYWZjW0AyVoHlcJUeZN19VWlbepTh1Vq6dJs=
 github.com/go-redis/redis/v7 v7.2.0/go.mod h1:JDNMw23GTyLNC4GZu9njt15ctBQVn7xjRfnwdHj/Dcg=
-github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
@@ -89,14 +76,10 @@ github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0/go.mod h1:8NvIoxWQoOIhqOTXgf
 github.com/grpc-ecosystem/grpc-gateway v1.9.0/go.mod h1:vNeuVxBJEsws4ogUvrchl83t/GYV9WGTSLVdBhOQFDY=
 github.com/hashicorp/hcl v1.0.0 h1:0Anlzjpi4vEasTeNFn2mLJgTSwt0+6sfsiTG8qcWGx4=
 github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T20WEQ=
-github.com/howcrazy/xconv v0.0.0-20161022181602-be3d9669d8c2 h1:fgclroWAz70XFO8/l85QCPOKzjwC6heQezBDUKYt/iA=
-github.com/howcrazy/xconv v0.0.0-20161022181602-be3d9669d8c2/go.mod h1:XvYuwjn2INSJrA/cIevJiNvxO1V8W81gOSk7X3EAPNM=
 github.com/hpcloud/tail v1.0.0 h1:nfCOvKYfkgYP8hkirhJocXT2+zOD8yUNjXaWfTlyFKI=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/inconshreveable/mousetrap v1.0.0 h1:Z8tu5sraLXCXIcARxBp/8cbvlwVa7Z1NHg9XEKhtSvM=
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
-github.com/jmespath/go-jmespath v0.3.0 h1:OS12ieG61fsCg5+qLJ+SsW9NicxNkg3b25OyT2yCeUc=
-github.com/jmespath/go-jmespath v0.3.0/go.mod h1:9QtRXoHjLGCJ5IBSaohpXITPlowMeeYCZ7fLUTSywik=
 github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22gdxWY5EU2bo=
 github.com/json-iterator/go v1.1.7/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
 github.com/json-iterator/go v1.1.8/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
@@ -143,7 +126,6 @@ github.com/op/go-logging v0.0.0-20160315200505-970db520ece7/go.mod h1:HzydrMdWEr
 github.com/pelletier/go-toml v1.2.0 h1:T5zMGML61Wp+FlcbWjRDT7yAxhJNAiPPLOFECq181zc=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prep/average v0.0.0-20180108152909-641f75c793a3 h1:cCcjbHtnU/sFcl1llYNDdC2XGid8hxYIx+nPqfWDKuI=
@@ -245,7 +227,6 @@ golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn
 golang.org/x/net v0.0.0-20190522155817-f3200d17e092/go.mod h1:HSz+uSET+XFnRR8LxR5pz3Of3rY3CfYBVs4xY44aLks=
 golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20190923162816-aa69164e4478/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
-golang.org/x/net v0.0.0-20200202094626-16171245cfb2/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200219183655-46282727080f/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200226121028-0de0cce0169b h1:0mm1VjtFUOIlE1SbDlwjYaDxZVDP2S5ou6y0gSgXHu8=
 golang.org/x/net v0.0.0-20200226121028-0de0cce0169b/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
