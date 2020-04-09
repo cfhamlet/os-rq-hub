@@ -1,10 +1,14 @@
-package hub
+package upstream
 
 import (
+	"context"
 	"math/rand"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/cfhamlet/os-rq-hub/hub/global"
+	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
@@ -12,7 +16,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/go-redis/redis/v7"
 )
 
 // CallByUpstream TODO
@@ -23,28 +27,45 @@ func NewPack(qid sth.QueueID) *QueueUpstreamsPack {
 	return &QueueUpstreamsPack{qid, slicemap.New()}
 }
 
-// UpstreamManager TODO
-type UpstreamManager struct {
-	core            *Core
-	statusUpstreams map[UpstreamStatus]*slicemap.Viewer
+// Manager TODO
+type Manager struct {
+	serv            *serv.Serv
+	statusUpstreams map[Status]*slicemap.Viewer
 	queueBulk       *QueueBulk
 	waitStop        *sync.WaitGroup
 	rand            *rand.Rand
+	client          *redis.Client
 	*utils.BulkLock
 }
 
-// NewUpstreamManager TODO
-func NewUpstreamManager(core *Core) *UpstreamManager {
-	statusUpstreams := map[UpstreamStatus]*slicemap.Viewer{}
+// OnStart TODO
+func (mgr *Manager) OnStart(context.Context) (err error) {
+	err = mgr.Load()
+	if err == nil {
+		err = mgr.Start()
+	}
+	return
+}
+
+// OnStop TODO
+func (mgr *Manager) OnStop(context.Context) error {
+	mgr.Stop()
+	return nil
+}
+
+// NewManager TODO
+func NewManager(serv *serv.Serv, client *redis.Client) *Manager {
+	statusUpstreams := map[Status]*slicemap.Viewer{}
 	for _, status := range UpstreamStatusList {
 		statusUpstreams[status] = slicemap.NewViewer(nil)
 	}
-	mgr := &UpstreamManager{
-		core,
+	mgr := &Manager{
+		serv,
 		statusUpstreams,
 		nil,
 		&sync.WaitGroup{},
 		rand.New(rand.NewSource(time.Now().UnixNano())),
+		client,
 		utils.NewBulkLock(1024),
 	}
 
@@ -54,16 +75,16 @@ func NewUpstreamManager(core *Core) *UpstreamManager {
 }
 
 // Load TODO
-func (mgr *UpstreamManager) Load() (err error) {
+func (mgr *Manager) Load() (err error) {
 
-	log.Logger.Debug("load upstreams start")
+	log.Logger.Info("load upstreams start")
 
-	scanner := utils.NewScanner(mgr.core.Client(), "hscan", RedisUpstreamsKey, "*", 1000)
+	scanner := utils.NewScanner(mgr.client, "hscan", global.RedisUpstreamsKey, "*", 1000)
 	err = scanner.Scan(
 		func(keys []string) (err error) {
 			isKey := false
 			for _, key := range keys {
-				err = mgr.core.SetStatus(serv.Preparing, false)
+				err = mgr.serv.SetStatus(serv.Preparing)
 				if err != nil {
 					return
 				}
@@ -88,7 +109,7 @@ func (mgr *UpstreamManager) Load() (err error) {
 		},
 	)
 
-	loadUpstreams := map[UpstreamStatus]int{}
+	loadUpstreams := map[Status]int{}
 	for status, upstreams := range mgr.statusUpstreams {
 		loadUpstreams[status] = upstreams.Size()
 	}
@@ -104,17 +125,17 @@ func (mgr *UpstreamManager) Load() (err error) {
 	return
 }
 
-func (mgr *UpstreamManager) addUpstream(storeMeta *UpstreamStoreMeta) (upstream *Upstream, err error) {
+func (mgr *Manager) addUpstream(storeMeta *StoreMeta) (upstream *Upstream, err error) {
 	iid := storeMeta.ID.ItemID()
 	for status := range mgr.statusUpstreams {
 		upstreams := mgr.statusUpstreams[status]
 		item := upstreams.Get(iid)
 		if item != nil {
-			err = pod.ExistError(storeMeta.ID)
+			err = plobal.ExistError(storeMeta.ID)
 			return
 		}
 	}
-	upstream = NewUpstream(mgr, storeMeta.UpstreamMeta)
+	upstream = NewUpstream(mgr, storeMeta.Meta)
 	if storeMeta.Status == UpstreamInit {
 		err = mgr.setStatus(upstream, UpstreamWorking)
 	} else {
@@ -125,7 +146,7 @@ func (mgr *UpstreamManager) addUpstream(storeMeta *UpstreamStoreMeta) (upstream 
 }
 
 // AddUpstream TODO
-func (mgr *UpstreamManager) AddUpstream(storeMeta *UpstreamStoreMeta) (result sth.Result, err error) {
+func (mgr *Manager) AddUpstream(storeMeta *StoreMeta) (result sth.Result, err error) {
 	iid := storeMeta.ID.ItemID()
 	mgr.Lock(iid)
 	defer mgr.Unlock(iid)
@@ -144,7 +165,7 @@ func (mgr *UpstreamManager) AddUpstream(storeMeta *UpstreamStoreMeta) (result st
 	return
 }
 
-func (mgr *UpstreamManager) startUpstream(id UpstreamID) (sth.Result, error) {
+func (mgr *Manager) startUpstream(id ID) (sth.Result, error) {
 	return mgr.doMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			err = upstream.Start()
@@ -155,7 +176,7 @@ func (mgr *UpstreamManager) startUpstream(id UpstreamID) (sth.Result, error) {
 }
 
 // Start TODO
-func (mgr *UpstreamManager) Start() (err error) {
+func (mgr *Manager) Start() (err error) {
 	for _, upstreams := range mgr.statusUpstreams {
 		iter := slicemap.NewBaseIter(upstreams.Map)
 		iter.Iter(
@@ -166,12 +187,11 @@ func (mgr *UpstreamManager) Start() (err error) {
 			},
 		)
 	}
-	mgr.core.waitStop.Add(1)
 	return
 }
 
 // Stop TODO
-func (mgr *UpstreamManager) Stop() {
+func (mgr *Manager) Stop() {
 	for status, upstreams := range mgr.statusUpstreams {
 		if StopUpstreamStatus(status) {
 			continue
@@ -196,21 +216,20 @@ func (mgr *UpstreamManager) Stop() {
 	}
 
 	mgr.waitStop.Wait()
-	mgr.core.waitStop.Done()
 }
 
 // ResumeUpstream TODO
-func (mgr *UpstreamManager) ResumeUpstream(id UpstreamID) (result sth.Result, err error) {
+func (mgr *Manager) ResumeUpstream(id ID) (result sth.Result, err error) {
 	return mgr.SetStatus(id, UpstreamWorking)
 }
 
 // PauseUpstream TODO
-func (mgr *UpstreamManager) PauseUpstream(id UpstreamID) (result sth.Result, err error) {
+func (mgr *Manager) PauseUpstream(id ID) (result sth.Result, err error) {
 	return mgr.SetStatus(id, UpstreamPaused)
 }
 
 // DeleteUpstream TODO
-func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result sth.Result, err error) {
+func (mgr *Manager) DeleteUpstream(id ID) (result sth.Result, err error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			err = upstream.Destory()
@@ -220,7 +239,7 @@ func (mgr *UpstreamManager) DeleteUpstream(id UpstreamID) (result sth.Result, er
 }
 
 // UpstreamInfo TODO
-func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result sth.Result, err error) {
+func (mgr *Manager) UpstreamInfo(id ID) (result sth.Result, err error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			return upstream.Info(), err
@@ -228,7 +247,7 @@ func (mgr *UpstreamManager) UpstreamInfo(id UpstreamID) (result sth.Result, err 
 }
 
 // Info TODO
-func (mgr *UpstreamManager) Info() (result sth.Result) {
+func (mgr *Manager) Info() (result sth.Result) {
 	st := sth.Result{}
 	for status, upstreams := range mgr.statusUpstreams {
 		st[utils.Text(status)] = upstreams.Size()
@@ -241,7 +260,7 @@ func (mgr *UpstreamManager) Info() (result sth.Result) {
 }
 
 // Queues TODO
-func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
+func (mgr *Manager) xxQueues(k int) (result sth.Result) {
 	t := time.Now()
 	out := []sth.Result{}
 	if mgr.statusUpstreams[UpstreamWorking].Size() <= 0 {
@@ -259,8 +278,8 @@ func (mgr *UpstreamManager) xxQueues(k int) (result sth.Result) {
 }
 
 // Queues TODO
-func (mgr *UpstreamManager) Queues(k int) (result sth.Result) {
-	r, _ := mgr.core.DoWithLockOnWorkStatus(
+func (mgr *Manager) Queues(k int) (result sth.Result) {
+	r, _ := mgr.serv.DoWithLockOnWorkStatus(
 		func() (interface{}, error) {
 			return mgr.xxQueues(k), nil
 		}, true, true)
@@ -268,7 +287,7 @@ func (mgr *UpstreamManager) Queues(k int) (result sth.Result) {
 }
 
 // Upstreams TODO
-func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result sth.Result, err error) {
+func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
 	upstreams := mgr.statusUpstreams[status]
 	iter := slicemap.NewBaseIter(upstreams.Map)
 	result = sth.Result{
@@ -288,7 +307,7 @@ func (mgr *UpstreamManager) Upstreams(status UpstreamStatus) (result sth.Result,
 }
 
 // UpdateUpStreamQueues TODO
-func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, qMetas []*QueueMeta) (sth.Result, error) {
+func (mgr *Manager) UpdateUpStreamQueues(id ID, qMetas []*QueueMeta) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			return upstream.UpdateQueues(qMetas), nil
@@ -296,7 +315,7 @@ func (mgr *UpstreamManager) UpdateUpStreamQueues(id UpstreamID, qMetas []*QueueM
 }
 
 // DeleteQueues TODO
-func (mgr *UpstreamManager) DeleteQueues(id UpstreamID, queueIDs []sth.QueueID) (sth.Result, error) {
+func (mgr *Manager) DeleteQueues(id ID, queueIDs []sth.QueueID) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			return upstream.DeleteQueues(queueIDs), nil
@@ -304,7 +323,7 @@ func (mgr *UpstreamManager) DeleteQueues(id UpstreamID, queueIDs []sth.QueueID) 
 }
 
 // DeleteOutdated TODO
-func (mgr *UpstreamManager) DeleteOutdated(qid sth.QueueID, ids []UpstreamID, ts time.Time) {
+func (mgr *Manager) DeleteOutdated(qid sth.QueueID, ids []ID, ts time.Time) {
 	for _, id := range ids {
 		_, _ = mgr.withLockMustExist(id,
 			func(upstream *Upstream) (sth.Result, error) {
@@ -315,19 +334,19 @@ func (mgr *UpstreamManager) DeleteOutdated(qid sth.QueueID, ids []UpstreamID, ts
 }
 
 // PopRequest TODO
-func (mgr *UpstreamManager) PopRequest(qid sth.QueueID) (req *request.Request, err error) {
-	r, e := mgr.core.DoWithLockOnWorkStatus(
+func (mgr *Manager) PopRequest(qid sth.QueueID) (req *request.Request, err error) {
+	r, e := mgr.serv.DoWithLockOnWorkStatus(
 		func() (interface{}, error) {
 			return mgr.xxPopRequest(qid)
 		}, true, true)
 	return r.(*request.Request), e
 }
 
-func (mgr *UpstreamManager) xxPopRequest(qid sth.QueueID) (req *request.Request, err error) {
+func (mgr *Manager) xxPopRequest(qid sth.QueueID) (req *request.Request, err error) {
 	return mgr.queueBulk.PopRequest(qid)
 }
 
-func (mgr *UpstreamManager) doMustExist(id UpstreamID, f CallByUpstream) (result sth.Result, err error) {
+func (mgr *Manager) doMustExist(id ID, f CallByUpstream) (result sth.Result, err error) {
 	iid := id.ItemID()
 	var item slicemap.Item
 	for status := range mgr.statusUpstreams {
@@ -336,11 +355,11 @@ func (mgr *UpstreamManager) doMustExist(id UpstreamID, f CallByUpstream) (result
 			return f(item.(*Upstream))
 		}
 	}
-	err = pod.NotExistError(id)
+	err = plobal.NotExistError(id)
 	return
 }
 
-func (mgr *UpstreamManager) setStatus(upstream *Upstream, newStatus UpstreamStatus) (err error) {
+func (mgr *Manager) setStatus(upstream *Upstream, newStatus Status) (err error) {
 	oldStatus := upstream.Status()
 	err = upstream.SetStatus(newStatus)
 	if err == nil && oldStatus != upstream.Status() {
@@ -353,7 +372,7 @@ func (mgr *UpstreamManager) setStatus(upstream *Upstream, newStatus UpstreamStat
 }
 
 // SetStatus TODO
-func (mgr *UpstreamManager) SetStatus(id UpstreamID, newStatus UpstreamStatus) (sth.Result, error) {
+func (mgr *Manager) SetStatus(id ID, newStatus Status) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			err = mgr.setStatus(upstream, newStatus)
@@ -361,7 +380,7 @@ func (mgr *UpstreamManager) SetStatus(id UpstreamID, newStatus UpstreamStatus) (
 		}, false)
 }
 
-func (mgr *UpstreamManager) withLockMustExist(id UpstreamID, f CallByUpstream, rLock bool) (result sth.Result, err error) {
+func (mgr *Manager) withLockMustExist(id ID, f CallByUpstream, rLock bool) (result sth.Result, err error) {
 	iid := id.ItemID()
 	if rLock {
 		mgr.RLock(iid)

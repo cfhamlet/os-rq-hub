@@ -1,4 +1,4 @@
-package hub
+package upstream
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/cfhamlet/os-rq-pod/pod/global"
 )
 
 // QueueMeta TODO
@@ -99,9 +99,9 @@ func (queue *Queue) getRequest() (req *request.Request, err error) {
 		req = &request.Request{}
 		err = json.Unmarshal(body, &req)
 	} else if resp.StatusCode == 404 {
-		err = pod.NotExistError(queue.ID.String())
+		err = global.NotExistError(queue.ID.String())
 	} else {
-		err = pod.UnavailableError(queue.ID.String())
+		err = global.UnavailableError(queue.ID.String())
 	}
 	return
 }
@@ -120,7 +120,7 @@ func (queue *Queue) Pop() (req *request.Request, qsize int64, err error) {
 
 	if dequeuing > qsize || dequeuing > 1984 {
 		msg := fmt.Sprintf("%s qsize %d, dequeuing %d", queue.ID, qsize, dequeuing)
-		err = pod.UnavailableError(msg)
+		err = global.UnavailableError(msg)
 		return
 	}
 

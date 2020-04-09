@@ -1,4 +1,4 @@
-package hub
+package upstream
 
 import (
 	"math/rand"
@@ -37,23 +37,23 @@ func (iter *CycleCountIter) Iter(f slicemap.IterFunc) {
 
 // RandSelector TODO
 type RandSelector struct {
-	mgr       *UpstreamManager
+	mgr       *Manager
 	r         *rand.Rand
 	k         int
 	selected  map[sth.QueueID]sth.Result
-	iterators map[UpstreamID]*CycleCountIter
+	iterators map[ID]*CycleCountIter
 	out       []sth.Result
 }
 
 // NewRandSelector TODO
-func NewRandSelector(mgr *UpstreamManager, k int) *RandSelector {
+func NewRandSelector(mgr *Manager, k int) *RandSelector {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &RandSelector{
 		mgr,
 		r,
 		k,
 		map[sth.QueueID]sth.Result{},
-		map[UpstreamID]*CycleCountIter{},
+		map[ID]*CycleCountIter{},
 		make([]sth.Result, 0, k),
 	}
 }
