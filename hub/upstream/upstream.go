@@ -1,4 +1,4 @@
-package hub
+package upstream
 
 import (
 	"fmt"
@@ -6,34 +6,35 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cfhamlet/os-rq-hub/hub/global"
 	"github.com/cfhamlet/os-rq-pod/pkg/json"
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 	"github.com/go-redis/redis/v7"
 	"github.com/segmentio/fasthash/fnv1a"
 )
 
-// UpstreamID TODO
-type UpstreamID string
+// ID TODO
+type ID string
 
 // ItemID TODO
-func (id UpstreamID) ItemID() uint64 {
+func (id ID) ItemID() uint64 {
 	return fnv1a.HashString64(string(id))
 }
 
-// UpstreamStoreMeta TODO
-type UpstreamStoreMeta struct {
-	*UpstreamMeta
-	Status UpstreamStatus `json:"status"`
+// StoreMeta TODO
+type StoreMeta struct {
+	*Meta
+	Status Status `json:"status"`
 }
 
 // UnmarshalUpstreamStoreMetaJSON TODO
-func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err error) {
-	storeMeta = NewUpstreamStoreMeta(nil)
+func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *StoreMeta, err error) {
+	storeMeta = NewStoreMeta(nil)
 	err = json.Unmarshal(b, storeMeta)
 	if err == nil {
 		var parsedURL *url.URL
@@ -43,36 +44,36 @@ func UnmarshalUpstreamStoreMetaJSON(b []byte) (storeMeta *UpstreamStoreMeta, err
 	return
 }
 
-// UpstreamMeta TODO
-type UpstreamMeta struct {
-	ID        UpstreamID `json:"id" binding:"required"`
-	API       string     `json:"api" binding:"required"`
-	ParsedAPI *url.URL   `json:"-"`
+// Meta TODO
+type Meta struct {
+	ID        ID       `json:"id" binding:"required"`
+	API       string   `json:"api" binding:"required"`
+	ParsedAPI *url.URL `json:"-"`
 }
 
-// NewUpstreamStoreMeta TODO
-func NewUpstreamStoreMeta(upstream *Upstream) *UpstreamStoreMeta {
+// NewStoreMeta TODO
+func NewStoreMeta(upstream *Upstream) *StoreMeta {
 	if upstream == nil {
-		return &UpstreamStoreMeta{}
+		return &StoreMeta{}
 	}
-	return &UpstreamStoreMeta{
-		upstream.UpstreamMeta,
+	return &StoreMeta{
+		upstream.Meta,
 		upstream.status,
 	}
 }
 
 // Upstream TODO
 type Upstream struct {
-	mgr *UpstreamManager
-	*UpstreamMeta
-	status UpstreamStatus
+	mgr *Manager
+	*Meta
+	status Status
 	queues *slicemap.Viewer
 	client *http.Client
 	qtask  *UpdateQueuesTask
 }
 
 // NewUpstream TODO
-func NewUpstream(mgr *UpstreamManager, meta *UpstreamMeta) *Upstream {
+func NewUpstream(mgr *Manager, meta *Meta) *Upstream {
 	upstream := &Upstream{
 		mgr,
 		meta,
@@ -90,24 +91,24 @@ func (upstream *Upstream) logFormat(format string, args ...interface{}) string {
 	return fmt.Sprintf("<upstream %s %s> %s", upstream.ID, upstream.status, msg)
 }
 
-func saveMeta(client *redis.Client, meta *UpstreamStoreMeta) (err error) {
+func saveMeta(client *redis.Client, meta *StoreMeta) (err error) {
 	var metaJSON []byte
 	metaJSON, err = json.Marshal(meta)
 	if err == nil {
-		_, err = client.HSet(RedisUpstreamsKey, string(meta.ID), string(metaJSON)).Result()
+		_, err = client.HSet(global.RedisUpstreamsKey, string(meta.ID), string(metaJSON)).Result()
 	}
 	log.Logger.Debugf("save %s %v", metaJSON, err)
 	return
 }
 
 // SetStatus TODO
-func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) (err error) {
+func (upstream *Upstream) SetStatus(newStatus Status) (err error) {
 
 	oldStatus := upstream.status
 	if oldStatus == newStatus {
 		return
 	}
-	e := pod.UnavailableError(oldStatus)
+	e := plobal.UnavailableError(oldStatus)
 	switch oldStatus {
 	case UpstreamInit:
 	case UpstreamUnavailable:
@@ -157,11 +158,11 @@ func (upstream *Upstream) SetStatus(newStatus UpstreamStatus) (err error) {
 	mgr := upstream.mgr
 	if WorkUpstreamStatus(newStatus) &&
 		newStatus != UpstreamUnavailable {
-		storeMeta := NewUpstreamStoreMeta(upstream)
+		storeMeta := NewStoreMeta(upstream)
 		storeMeta.Status = newStatus
-		err = saveMeta(mgr.core.Client(), storeMeta)
+		err = saveMeta(mgr.client, storeMeta)
 	} else if newStatus == UpstreamRemoved {
-		_, err = mgr.core.Client().HDel(RedisUpstreamsKey, string(upstream.ID)).Result()
+		_, err = mgr.client.HDel(global.RedisUpstreamsKey, string(upstream.ID)).Result()
 	}
 
 	if err == nil {
@@ -198,7 +199,7 @@ func (upstream *Upstream) Destory() (err error) {
 	return upstream.teardown(UpstreamRemoving)
 }
 
-func (upstream *Upstream) teardown(status UpstreamStatus) (err error) {
+func (upstream *Upstream) teardown(status Status) (err error) {
 	if upstream.qtask == nil ||
 		StopUpstreamStatus(upstream.status) {
 		log.Logger.Warningf(upstream.logFormat("can not teardown twice"))
@@ -231,7 +232,7 @@ func (upstream *Upstream) Info() (result sth.Result) {
 }
 
 // Status TODO
-func (upstream *Upstream) Status() UpstreamStatus {
+func (upstream *Upstream) Status() Status {
 	return upstream.status
 }
 
@@ -332,13 +333,13 @@ func (upstream *Upstream) DeleteQueues(queueIDs []sth.QueueID) (result sth.Resul
 // PopRequest TODO
 func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsize int64, err error) {
 	if upstream.status != UpstreamWorking {
-		err = pod.UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
+		err = plobal.UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
 		return
 	}
 	upstream.queues.View(qid.ItemID(),
 		func(item slicemap.Item) {
 			if item == nil {
-				err = pod.NotExistError(qid.String())
+				err = plobal.NotExistError(qid.String())
 				return
 			}
 			queue := item.(*Queue)

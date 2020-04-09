@@ -1,4 +1,4 @@
-package hub
+package upstream
 
 import (
 	"sync/atomic"
@@ -7,7 +7,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/cfhamlet/os-rq-pod/pod/global"
 )
 
 // QueueUpstreamsPack TODO
@@ -18,13 +18,13 @@ type QueueUpstreamsPack struct {
 
 // QueueBulk TODO
 type QueueBulk struct {
-	mgr  *UpstreamManager
+	mgr  *Manager
 	bulk []*slicemap.Viewer
 	size int64
 }
 
 // NewQueueBulk TODO
-func NewQueueBulk(mgr *UpstreamManager, bulkSize int) *QueueBulk {
+func NewQueueBulk(mgr *Manager, bulkSize int) *QueueBulk {
 	bulk := make([]*slicemap.Viewer, 0, bulkSize)
 	for i := 0; i < bulkSize; i++ {
 		bulk = append(bulk, slicemap.NewViewer(nil))
@@ -62,11 +62,11 @@ func (qb *QueueBulk) GetAndDelete(id uint64, f func(slicemap.Item) bool) bool {
 // PopRequest TODO
 func (qb *QueueBulk) PopRequest(qid sth.QueueID) (req *request.Request, err error) {
 	iid := qid.ItemID()
-	toBeDeleted := make([]UpstreamID, 0)
+	toBeDeleted := make([]ID, 0)
 	qb.bulk[qb.index(iid)].View(iid,
 		func(item slicemap.Item) {
 			if item == nil {
-				err = pod.NotExistError(qid.String())
+				err = global.NotExistError(qid.String())
 				return
 			}
 			pack := item.(*QueueUpstreamsPack)

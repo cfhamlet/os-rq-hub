@@ -1,4 +1,4 @@
-package hub
+package upstream
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/cfhamlet/os-rq-pod/pod/queuebox"
 )
 
 type operate func()
@@ -142,7 +142,7 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 			break
 		}
 		s := q.(string)
-		qid, err := pod.QueueIDFromString(s)
+		qid, err := queuebox.QueueIDFromString(s)
 		if err != nil {
 			break
 		}

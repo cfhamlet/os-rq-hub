@@ -1,22 +1,22 @@
-package controller
+package controllers
 
 import (
 	"net/http"
 	"net/url"
 
-	"github.com/cfhamlet/os-rq-pod/app/controller"
-	"github.com/cfhamlet/os-rq-pod/pod"
+	"github.com/cfhamlet/os-go-rq/controllers"
+	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 )
 
 // ErrorCode TODO
 func ErrorCode(err error) int {
 	var code int
 	switch err.(type) {
-	case *url.Error, controller.InvalidQuery, controller.InvalidBody:
+	case *url.Error, controllers.InvalidQuery, controllers.InvalidBody:
 		code = http.StatusBadRequest
-	case pod.NotExistError:
+	case plobal.NotExistError:
 		code = http.StatusNotFound
-	case pod.UnavailableError, pod.ExistError:
+	case plobal.UnavailableError, plobal.ExistError:
 		code = http.StatusNotAcceptable
 	default:
 		code = http.StatusInternalServerError

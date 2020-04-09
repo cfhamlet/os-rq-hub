@@ -1,6 +1,6 @@
-//go:generate stringer -type=UpstreamStatus -linecomment
+//go:generate stringer -type=Status -linecomment
 
-package hub
+package upstream
 
 import (
 	"bytes"
@@ -10,24 +10,24 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 )
 
-// UpstreamStatus TODO
-type UpstreamStatus int
+// Status TODO
+type Status int
 
 // Status enum
 const (
-	_                   UpstreamStatus = iota
-	UpstreamInit                       // init
-	UpstreamWorking                    // working
-	UpstreamPaused                     // paused
-	UpstreamUnavailable                // unavailable
-	UpstreamStopping                   // stopping
-	UpstreamStopped                    // stopped
-	UpstreamRemoving                   // removing
-	UpstreamRemoved                    // removed
+	_                   Status = iota
+	UpstreamInit               // init
+	UpstreamWorking            // working
+	UpstreamPaused             // paused
+	UpstreamUnavailable        // unavailable
+	UpstreamStopping           // stopping
+	UpstreamStopped            // stopped
+	UpstreamRemoving           // removing
+	UpstreamRemoved            // removed
 )
 
 // UpstreamStatusMap TODO
-var UpstreamStatusMap = map[string]UpstreamStatus{
+var UpstreamStatusMap = map[string]Status{
 	utils.Text(UpstreamInit):        UpstreamInit,
 	utils.Text(UpstreamWorking):     UpstreamWorking,
 	utils.Text(UpstreamPaused):      UpstreamPaused,
@@ -39,7 +39,7 @@ var UpstreamStatusMap = map[string]UpstreamStatus{
 }
 
 // UpstreamStatusList TODO
-var UpstreamStatusList = []UpstreamStatus{
+var UpstreamStatusList = []Status{
 	UpstreamInit,
 	UpstreamWorking,
 	UpstreamPaused,
@@ -51,7 +51,7 @@ var UpstreamStatusList = []UpstreamStatus{
 }
 
 // MarshalJSON TODO
-func (s UpstreamStatus) MarshalJSON() ([]byte, error) {
+func (s Status) MarshalJSON() ([]byte, error) {
 	buffer := bytes.NewBufferString(`"`)
 	buffer.WriteString(utils.Text(s))
 	buffer.WriteString(`"`)
@@ -59,7 +59,7 @@ func (s UpstreamStatus) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON TODO
-func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
+func (s *Status) UnmarshalJSON(b []byte) error {
 	var j string
 	err := json.Unmarshal(b, &j)
 	if err != nil {
@@ -76,14 +76,14 @@ func (s *UpstreamStatus) UnmarshalJSON(b []byte) error {
 }
 
 // WorkUpstreamStatus TODO
-func WorkUpstreamStatus(status UpstreamStatus) bool {
+func WorkUpstreamStatus(status Status) bool {
 	return status == UpstreamWorking ||
 		status == UpstreamPaused ||
 		status == UpstreamUnavailable
 }
 
 // StopUpstreamStatus TODO
-func StopUpstreamStatus(status UpstreamStatus) bool {
+func StopUpstreamStatus(status Status) bool {
 	return status == UpstreamStopping ||
 		status == UpstreamStopped ||
 		status == UpstreamRemoving ||

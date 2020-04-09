@@ -1,4 +1,4 @@
-package hub
+package global
 
 // RedisConfigKey TODO
 const RedisConfigKey = "rq:hub:conf"
