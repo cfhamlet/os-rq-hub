@@ -6,7 +6,6 @@ import (
 	"github.com/cfhamlet/os-rq-hub/hub/upstream"
 	"github.com/cfhamlet/os-rq-pod/app/controllers"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
-	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -71,7 +70,10 @@ func (ctrl *UpstreamController) UpstreamInfo(c *gin.Context) (sth.Result, error)
 
 // Upstreams TODO
 func (ctrl *UpstreamController) Upstreams(c *gin.Context) (result sth.Result, err error) {
-	qs := c.DefaultQuery("status", utils.Text(upstream.UpstreamWorking))
+	qs := c.Query("status")
+	if qs == "" {
+		return ctrl.upstreamMgr.AllUpstreams()
+	}
 	status, ok := upstream.UpstreamStatusMap[qs]
 	if !ok {
 		err = controllers.InvalidQuery(fmt.Sprintf(`invalid status '%s'`, qs))

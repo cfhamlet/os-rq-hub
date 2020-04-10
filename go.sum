@@ -20,6 +20,8 @@ github.com/cfhamlet/os-rq-pod v0.2.1 h1:zv4EBPttcll9g8XpOkmJzi8z0T9WrR1Lu7159zFS
 github.com/cfhamlet/os-rq-pod v0.2.1/go.mod h1:50lbZ3tg5yD32AObE8aGhFOeXHCi8MzeMQNLRBLtzQY=
 github.com/cfhamlet/os-rq-pod v0.2.2 h1:jIUo+VFXOl6Yw92er1SZBa6Th7UTfYm9az5U1EG/078=
 github.com/cfhamlet/os-rq-pod v0.2.2/go.mod h1:50lbZ3tg5yD32AObE8aGhFOeXHCi8MzeMQNLRBLtzQY=
+github.com/cfhamlet/os-rq-pod v0.2.3 h1:bTkh33skLnDqOK1DI6C++q8ICD4jjN66l8sADT68BC8=
+github.com/cfhamlet/os-rq-pod v0.2.3/go.mod h1:50lbZ3tg5yD32AObE8aGhFOeXHCi8MzeMQNLRBLtzQY=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=

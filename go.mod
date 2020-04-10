@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/cfhamlet/os-go-rq v0.0.1
-	github.com/cfhamlet/os-rq-pod v0.2.2
+	github.com/cfhamlet/os-rq-pod v0.2.3
 	github.com/gin-gonic/gin v1.5.0
 	github.com/go-redis/redis/v7 v7.2.0
 	github.com/segmentio/fasthash v1.0.1
