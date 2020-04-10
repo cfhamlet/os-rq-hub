@@ -292,7 +292,6 @@ func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
 	iter := slicemap.NewBaseIter(upstreams.Map)
 	result = sth.Result{
 		"status": utils.Text(status),
-		"count":  upstreams.Size(),
 		"total":  upstreams.Size(),
 	}
 	out := []sth.Result{}
@@ -303,6 +302,29 @@ func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
 	},
 	)
 	result["upstreams"] = out
+	return
+}
+
+// AllUpstreams TODO
+func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
+	result = sth.Result{}
+	total := 0
+	out := []sth.Result{}
+	for _, upstreams := range mgr.statusUpstreams {
+		t := upstreams.Size()
+		if t <= 0 {
+			continue
+		}
+		iter := slicemap.NewBaseIter(upstreams.Map)
+		iter.Iter(func(item slicemap.Item) bool {
+			upstream := item.(*Upstream)
+			out = append(out, upstream.Info())
+			return true
+		})
+
+	}
+	result["upstreams"] = out
+	result["total"] = total
 	return
 }
 
