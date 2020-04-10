@@ -36,7 +36,7 @@ func NewQueueMeta(qid sth.QueueID, qsize int64) *QueueMeta {
 
 // NewQueue TODO
 func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
-	endpoint, err := url.Parse(fmt.Sprintf("request/pop/?q=%s", meta.ID))
+	endpoint, err := url.Parse(fmt.Sprintf("queue/pop/?q=%s", meta.ID))
 	if err != nil {
 		panic(err)
 	}
