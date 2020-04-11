@@ -12,7 +12,6 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
-	"github.com/cfhamlet/os-rq-pod/pkg/utils"
 	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 	"github.com/go-redis/redis/v7"
 	"github.com/segmentio/fasthash/fnv1a"
@@ -236,98 +235,42 @@ func (upstream *Upstream) Status() Status {
 	return upstream.status
 }
 
-// UpdateQueues TODO
-func (upstream *Upstream) UpdateQueues(qMetas []*QueueMeta) (result sth.Result) {
-	t := time.Now()
-	new := 0
-	newTotal := 0
-	for _, meta := range qMetas {
-		iid := meta.ID.ItemID()
-		queue := upstream.queues.Get(iid)
-		if queue != nil {
-			q := queue.(*Queue)
-			q.qsize = meta.qsize
-			q.updateTime = time.Now()
-			continue
-		}
-		new++
-		upstream.queues.Add(NewQueue(upstream, meta))
-		upstream.mgr.queueBulk.GetOrAdd(iid,
-			func(item slicemap.Item) slicemap.Item {
-				if item == nil {
-					newTotal++
-					pack := NewPack(meta.ID)
-					pack.Add(upstream)
-					return pack
-				}
-				pack := item.(*QueueUpstreamsPack)
-				pack.Add(upstream)
-				return nil
-			},
-		)
-	}
-	result = upstream.Info()
-	result["num"] = len(qMetas)
-	result["new"] = new
-	result["new_total"] = newTotal
-	result["_cost_ms_"] = utils.SinceMS(t)
-	return
+// UpdateQueue TODO
+func (upstream *Upstream) UpdateQueue(qMeta *QueueMeta) bool {
+	new := false
+	upstream.queues.GetOrAdd(qMeta.ID.ItemID(),
+		func(item slicemap.Item) slicemap.Item {
+			var queue *Queue
+			if item == nil {
+				queue = NewQueue(upstream, qMeta)
+				new = true
+			} else {
+				queue = item.(*Queue)
+				queue.qsize = qMeta.qsize
+				queue.updateTime = time.Now()
+			}
+			return queue
+		},
+	)
+	return new
 }
 
-// ExistQueueID TODO
-func (upstream *Upstream) ExistQueueID(qid sth.QueueID) bool {
+// ExistQueue TODO
+func (upstream *Upstream) ExistQueue(qid sth.QueueID) bool {
 	return nil != upstream.queues.Get(qid.ItemID())
 }
 
-func (upstream *Upstream) deleteQueue(qid sth.QueueID) bool {
-	iid := qid.ItemID()
-	if upstream.queues.Delete(iid) {
-		upstream.mgr.queueBulk.GetAndDelete(iid,
-			func(item slicemap.Item) bool {
-				pack := item.(*QueueUpstreamsPack)
-				pack.Delete(upstream.ItemID())
-				return pack.Size() <= 0
-			},
-		)
-	}
-	return false
-}
-
-func (upstream *Upstream) deleteOutdated(qid sth.QueueID, ts time.Time) bool {
-	iid := qid.ItemID()
-	return upstream.queues.GetAndDelete(iid,
+// DeleteQueue TODO
+func (upstream *Upstream) DeleteQueue(qid sth.QueueID, ts *time.Time) bool {
+	return upstream.queues.GetAndDelete(qid.ItemID(),
 		func(item slicemap.Item) bool {
 			queue := item.(*Queue)
-			if ts.Sub(queue.updateTime) > 0 {
-				upstream.mgr.queueBulk.GetAndDelete(iid,
-					func(item slicemap.Item) bool {
-						pack := item.(*QueueUpstreamsPack)
-						pack.Delete(upstream.ItemID())
-						return pack.Size() <= 0
-					},
-				)
+			if ts == nil || ts.Sub(queue.updateTime) > 0 {
 				return true
 			}
 			return false
 		},
 	)
-}
-
-// DeleteQueues TODO
-func (upstream *Upstream) DeleteQueues(queueIDs []sth.QueueID) (result sth.Result) {
-	t := time.Now()
-
-	deleted := 0
-	for _, qid := range queueIDs {
-		if upstream.deleteQueue(qid) {
-			deleted++
-		}
-	}
-	result = upstream.Info()
-	result["num"] = len(queueIDs)
-	result["deleted"] = deleted
-	result["_cost_ms_"] = utils.SinceMS(t)
-	return
 }
 
 // PopRequest TODO

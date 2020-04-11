@@ -22,11 +22,6 @@ import (
 // CallByUpstream TODO
 type CallByUpstream func(*Upstream) (sth.Result, error)
 
-// NewPack TODO
-func NewPack(qid sth.QueueID) *QueueUpstreamsPack {
-	return &QueueUpstreamsPack{qid, slicemap.New()}
-}
-
 // Manager TODO
 type Manager struct {
 	serv            *serv.Serv
@@ -35,7 +30,7 @@ type Manager struct {
 	waitStop        *sync.WaitGroup
 	rand            *rand.Rand
 	client          *redis.Client
-	*utils.BulkLock
+	*sync.RWMutex
 }
 
 // OnStart TODO
@@ -66,7 +61,7 @@ func NewManager(serv *serv.Serv, client *redis.Client) *Manager {
 		&sync.WaitGroup{},
 		rand.New(rand.NewSource(time.Now().UnixNano())),
 		client,
-		utils.NewBulkLock(1024),
+		&sync.RWMutex{},
 	}
 
 	qb := NewQueueBulk(mgr, 1024)
@@ -147,9 +142,8 @@ func (mgr *Manager) addUpstream(storeMeta *StoreMeta) (upstream *Upstream, err e
 
 // AddUpstream TODO
 func (mgr *Manager) AddUpstream(storeMeta *StoreMeta) (result sth.Result, err error) {
-	iid := storeMeta.ID.ItemID()
-	mgr.Lock(iid)
-	defer mgr.Unlock(iid)
+	mgr.Lock()
+	defer mgr.Unlock()
 	if storeMeta.ParsedAPI == nil {
 		var parsedURL *url.URL
 		parsedURL, err = url.Parse(storeMeta.API)
@@ -177,21 +171,32 @@ func (mgr *Manager) startUpstream(id ID) (sth.Result, error) {
 
 // Start TODO
 func (mgr *Manager) Start() (err error) {
+	mgr.RLock()
+	toBeStarted := []*Upstream{}
 	for _, upstreams := range mgr.statusUpstreams {
 		iter := slicemap.NewBaseIter(upstreams.Map)
 		iter.Iter(
 			func(item slicemap.Item) bool {
 				upstream := item.(*Upstream)
-				err = upstream.Start()
-				return err == nil
+				toBeStarted = append(toBeStarted, upstream)
+				return true
 			},
 		)
+	}
+	mgr.RUnlock()
+	for _, upstream := range toBeStarted {
+		err = upstream.Start()
+		if err != nil {
+			break
+		}
 	}
 	return
 }
 
 // Stop TODO
 func (mgr *Manager) Stop() {
+	mgr.RLock()
+	toBeStopped := []*Upstream{}
 	for status, upstreams := range mgr.statusUpstreams {
 		if StopUpstreamStatus(status) {
 			continue
@@ -200,19 +205,18 @@ func (mgr *Manager) Stop() {
 		iter.Iter(
 			func(item slicemap.Item) bool {
 				upstream := item.(*Upstream)
-				go func() {
-					_, _ = mgr.withLockMustExist(upstream.ID,
-						func(upstream *Upstream) (sth.Result, error) {
-							err := upstream.Stop()
-							if err != nil {
-								log.Logger.Warning(upstream.logFormat("stop fail %s", err))
-							}
-							return nil, err
-						}, false)
-				}()
+				toBeStopped = append(toBeStopped, upstream)
 				return true
 			},
 		)
+	}
+	mgr.RUnlock()
+
+	for _, upstream := range toBeStopped {
+		err := upstream.Stop()
+		if err != nil {
+			log.Logger.Warning(upstream.logFormat("stop fail %s", err))
+		}
 	}
 
 	mgr.waitStop.Wait()
@@ -248,6 +252,8 @@ func (mgr *Manager) UpstreamInfo(id ID) (result sth.Result, err error) {
 
 // Info TODO
 func (mgr *Manager) Info() (result sth.Result) {
+	mgr.RLock()
+	defer mgr.RUnlock()
 	st := sth.Result{}
 	for status, upstreams := range mgr.statusUpstreams {
 		st[utils.Text(status)] = upstreams.Size()
@@ -261,6 +267,8 @@ func (mgr *Manager) Info() (result sth.Result) {
 
 // Queues TODO
 func (mgr *Manager) xxQueues(k int) (result sth.Result) {
+	mgr.RLock()
+	defer mgr.RUnlock()
 	t := time.Now()
 	out := []sth.Result{}
 	if mgr.statusUpstreams[UpstreamWorking].Size() <= 0 {
@@ -288,6 +296,8 @@ func (mgr *Manager) Queues(k int) (result sth.Result) {
 
 // Upstreams TODO
 func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
 	upstreams := mgr.statusUpstreams[status]
 	iter := slicemap.NewBaseIter(upstreams.Map)
 	result = sth.Result{
@@ -307,6 +317,8 @@ func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
 
 // AllUpstreams TODO
 func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
 	result = sth.Result{}
 	total := 0
 	out := []sth.Result{}
@@ -328,31 +340,28 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 	return
 }
 
-// UpdateUpStreamQueues TODO
-func (mgr *Manager) UpdateUpStreamQueues(id ID, qMetas []*QueueMeta) (sth.Result, error) {
+// UpdateQueues TODO
+func (mgr *Manager) UpdateQueues(id ID, qMetas []*QueueMeta) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
-			return upstream.UpdateQueues(qMetas), nil
+			uNew := 0
+			gNew := 0
+			t := time.Now()
+			for _, qMeta := range qMetas {
+				u, g := mgr.queueBulk.UpdateUpstream(upstream, qMeta)
+				uNew += u
+				gNew += g
+			}
+			return sth.Result{"new": uNew, "new_global": gNew, "_cost_ms_": utils.SinceMS(t)}, nil
 		}, true)
 }
 
 // DeleteQueues TODO
-func (mgr *Manager) DeleteQueues(id ID, queueIDs []sth.QueueID) (sth.Result, error) {
+func (mgr *Manager) DeleteQueues(id ID, queueIDs []sth.QueueID, ts *time.Time) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
-			return upstream.DeleteQueues(queueIDs), nil
+			return mgr.queueBulk.ClearUpstream(id, queueIDs, ts), nil
 		}, true)
-}
-
-// DeleteOutdated TODO
-func (mgr *Manager) DeleteOutdated(qid sth.QueueID, ids []ID, ts time.Time) {
-	for _, id := range ids {
-		_, _ = mgr.withLockMustExist(id,
-			func(upstream *Upstream) (sth.Result, error) {
-				upstream.deleteOutdated(qid, ts)
-				return nil, nil
-			}, true)
-	}
 }
 
 // PopRequest TODO
@@ -403,13 +412,12 @@ func (mgr *Manager) SetStatus(id ID, newStatus Status) (sth.Result, error) {
 }
 
 func (mgr *Manager) withLockMustExist(id ID, f CallByUpstream, rLock bool) (result sth.Result, err error) {
-	iid := id.ItemID()
 	if rLock {
-		mgr.RLock(iid)
-		defer mgr.RUnlock(iid)
+		mgr.RLock()
+		defer mgr.RUnlock()
 	} else {
-		mgr.Lock(iid)
-		defer mgr.Unlock(iid)
+		mgr.Lock()
+		defer mgr.Unlock()
 	}
 	return mgr.doMustExist(id, f)
 }

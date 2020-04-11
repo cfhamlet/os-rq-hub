@@ -152,7 +152,7 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 			qsize = int64(qz.(float64))
 		}
 
-		if !task.upstream.ExistQueueID(qid) {
+		if !task.upstream.ExistQueue(qid) {
 			qMetas = append(qMetas, NewQueueMeta(qid, qsize))
 			new++
 		}
@@ -190,7 +190,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 	}
 
 	var result sth.Result
-	result, err = upstream.mgr.UpdateUpStreamQueues(upstream.ID, queues)
+	result, err = upstream.mgr.UpdateQueues(upstream.ID, queues)
 	if err != nil {
 		log.Logger.Error(task.upstream.logFormat("%v", err))
 	} else {
@@ -242,7 +242,7 @@ func (task *UpdateQueuesTask) clear() {
 					return len(toBeDeleted) < 100
 				},
 			)
-			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted)
+			_, _ = upstream.mgr.DeleteQueues(upstream.ID, toBeDeleted, nil)
 		}
 		status = UpstreamRemoved
 		log.Logger.Debug(task.upstream.logFormat("clear finished"))
