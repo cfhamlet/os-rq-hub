@@ -10,6 +10,8 @@ require (
 	github.com/prep/average v0.0.0-20180108152909-641f75c793a3
 	github.com/segmentio/fasthash v1.0.1
 	github.com/spf13/viper v1.4.0
+	github.com/stretchr/testify v1.5.1
+	github.com/tj/assert v0.0.0-20190920132354-ee03d75cd160
 	go.uber.org/fx v1.10.0
 	gopkg.in/redis.v5 v5.2.9
 )
