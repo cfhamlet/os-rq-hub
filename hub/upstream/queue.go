@@ -27,6 +27,7 @@ type Queue struct {
 	dequeuing   int64
 	apiEndpoint *url.URL
 	updateTime  time.Time
+	heapIdx     int
 }
 
 // NewQueueMeta TODO
@@ -40,7 +41,7 @@ func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
 	if err != nil {
 		panic(err)
 	}
-	return &Queue{upstream, meta, 0, endpoint, time.Now()}
+	return &Queue{upstream, meta, 0, endpoint, time.Now(), 0}
 }
 
 // ItemID TODO

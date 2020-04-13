@@ -69,6 +69,7 @@ type Upstream struct {
 	*Meta
 	status   Status
 	queues   *slicemap.Viewer
+	qheap    *QueueHeap
 	client   *http.Client
 	reqSpeed *average.SlidingWindow
 	qtask    *UpdateQueuesTask
@@ -81,6 +82,7 @@ func NewUpstream(mgr *Manager, meta *Meta) *Upstream {
 		meta,
 		UpstreamInit,
 		slicemap.NewViewer(nil),
+		NewQueueHeap(),
 		&http.Client{},
 		queuebox.MustNewMinuteWindow(),
 		nil,
@@ -228,11 +230,13 @@ func (upstream *Upstream) Stop() (err error) {
 // Info TODO
 func (upstream *Upstream) Info() (result sth.Result) {
 	return sth.Result{
-		"id":       upstream.ID,
-		"api":      upstream.API,
-		"status":   upstream.status,
-		"queues":   upstream.queues.Size(),
-		"speed_5s": queuebox.WindowTotal(upstream.reqSpeed, 5),
+		"id":        upstream.ID,
+		"api":       upstream.API,
+		"status":    upstream.status,
+		"queues":    upstream.queues.Size(),
+		"heap_size": upstream.qheap.Size(),
+		"heap_top":  upstream.qheap.Top(),
+		"speed_5s":  queuebox.WindowTotal(upstream.reqSpeed, 5),
 	}
 }
 
@@ -249,11 +253,13 @@ func (upstream *Upstream) UpdateQueue(qMeta *QueueMeta) bool {
 			var queue *Queue
 			if item == nil {
 				queue = NewQueue(upstream, qMeta)
+				upstream.qheap.Push(queue)
 				new = true
 			} else {
 				queue = item.(*Queue)
 				queue.qsize = qMeta.qsize
 				queue.updateTime = time.Now()
+				upstream.qheap.Update(queue)
 			}
 			return queue
 		},
@@ -272,6 +278,7 @@ func (upstream *Upstream) DeleteQueue(qid sth.QueueID, ts *time.Time) bool {
 		func(item slicemap.Item) bool {
 			queue := item.(*Queue)
 			if ts == nil || ts.Sub(queue.updateTime) > 0 {
+				upstream.qheap.Delete(queue)
 				return true
 			}
 			return false
