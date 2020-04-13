@@ -27,6 +27,7 @@ type Queue struct {
 	dequeuing   int64
 	apiEndpoint *url.URL
 	updateTime  time.Time
+	heapIdx     int
 }
 
 // NewQueueMeta TODO
@@ -40,7 +41,16 @@ func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
 	if err != nil {
 		panic(err)
 	}
-	return &Queue{upstream, meta, 0, endpoint, time.Now()}
+	return &Queue{upstream, meta, 0, endpoint, time.Now(), 0}
+}
+
+// Info TODO
+func (queue *Queue) Info() sth.Result {
+	return sth.Result{
+		"qid":         queue.ID,
+		"qsize":       queue.QueueSize(),
+		"update_time": queue.updateTime,
+	}
 }
 
 // ItemID TODO
@@ -65,6 +75,7 @@ func (queue *Queue) decr(n int64) int64 {
 }
 
 func (queue *Queue) updateOutput(n int64) int64 {
+	queue.upstream.reqSpeed.Add(n)
 	return queue.decr(n)
 }
 
