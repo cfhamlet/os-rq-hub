@@ -250,21 +250,6 @@ func (mgr *Manager) UpstreamInfo(id ID) (result sth.Result, err error) {
 		}, true)
 }
 
-// Info TODO
-func (mgr *Manager) Info() (result sth.Result) {
-	mgr.RLock()
-	defer mgr.RUnlock()
-	st := sth.Result{}
-	for status, upstreams := range mgr.statusUpstreams {
-		st[utils.Text(status)] = upstreams.Size()
-	}
-	result = sth.Result{
-		"upstreams": st,
-		"queues":    mgr.queueBulk.Size(),
-	}
-	return
-}
-
 // Queues TODO
 func (mgr *Manager) xxQueues(k int) (result sth.Result) {
 	mgr.RLock()
@@ -321,8 +306,9 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 	defer mgr.RUnlock()
 	result = sth.Result{}
 	total := 0
-	out := []sth.Result{}
-	for _, upstreams := range mgr.statusUpstreams {
+	out := sth.Result{}
+	for status, upstreams := range mgr.statusUpstreams {
+		s := []sth.Result{}
 		t := upstreams.Size()
 		if t <= 0 {
 			continue
@@ -330,13 +316,15 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 		iter := slicemap.NewBaseIter(upstreams.Map)
 		iter.Iter(func(item slicemap.Item) bool {
 			upstream := item.(*Upstream)
-			out = append(out, upstream.Info())
+			s = append(s, upstream.Info())
+			total++
 			return true
 		})
-
+		out[utils.Text(status)] = s
 	}
 	result["upstreams"] = out
 	result["total"] = total
+	result["queues"] = mgr.queueBulk.Size()
 	return
 }
 
