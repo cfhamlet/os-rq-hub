@@ -79,6 +79,8 @@ func (qb *QueueBulk) UpdateUpstream(upstream *Upstream, qMeta *QueueMeta) (int, 
 			if item == nil {
 				pack = NewPack(qMeta.ID)
 				gNew = 1
+			} else {
+				pack = item.(*Pack)
 			}
 			pack.GetOrAdd(upstream.ItemID(),
 				func(uitem slicemap.Item) slicemap.Item {
