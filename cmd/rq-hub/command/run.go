@@ -14,7 +14,9 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/runner"
 	"github.com/cfhamlet/os-rq-pod/pkg/serv"
 	"github.com/cfhamlet/os-rq-pod/pkg/utils"
+	"github.com/cfhamlet/os-rq-pod/pod/redisconfig"
 
+	"github.com/go-redis/redis/v7"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -27,6 +29,10 @@ func run(conf *viper.Viper) {
 	newConfig := func() (*viper.Viper, error) {
 		err := config.LoadConfig(conf, global.EnvPrefix, global.DefaultConfig)
 		return conf, err
+	}
+
+	newRdsConfig := func(serv *serv.Serv, client *redis.Client) *redisconfig.RedisConfig {
+		return redisconfig.New(serv, client, []string{})
 	}
 
 	hubGo := func(lc fx.Lifecycle, serv *serv.Serv, r *runner.Runner) {
@@ -44,6 +50,7 @@ func run(conf *viper.Viper) {
 			runner.New,
 			newConfig,
 			utils.NewRedisClient,
+			newRdsConfig,
 			serv.New,
 			upstream.NewManager,
 			ginserv.NewEngine,
