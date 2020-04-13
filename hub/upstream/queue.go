@@ -44,6 +44,15 @@ func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
 	return &Queue{upstream, meta, 0, endpoint, time.Now(), 0}
 }
 
+// Info TODO
+func (queue *Queue) Info() sth.Result {
+	return sth.Result{
+		"qid":         queue.ID,
+		"qsize":       queue.QueueSize(),
+		"update_time": queue.updateTime,
+	}
+}
+
 // ItemID TODO
 func (queue *Queue) ItemID() uint64 {
 	return queue.ID.ItemID()
@@ -66,6 +75,7 @@ func (queue *Queue) decr(n int64) int64 {
 }
 
 func (queue *Queue) updateOutput(n int64) int64 {
+	queue.upstream.reqSpeed.Add(n)
 	return queue.decr(n)
 }
 

@@ -229,15 +229,19 @@ func (upstream *Upstream) Stop() (err error) {
 
 // Info TODO
 func (upstream *Upstream) Info() (result sth.Result) {
-	return sth.Result{
+	result = sth.Result{
 		"id":        upstream.ID,
 		"api":       upstream.API,
 		"status":    upstream.status,
 		"queues":    upstream.queues.Size(),
 		"heap_size": upstream.qheap.Size(),
-		"heap_top":  upstream.qheap.Top(),
 		"speed_5s":  queuebox.WindowTotal(upstream.reqSpeed, 5),
 	}
+	top := upstream.qheap.Top()
+	if top != nil {
+		result["heap_top"] = top
+	}
+	return
 }
 
 // Status TODO
@@ -302,8 +306,5 @@ func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsi
 			req, qsize, err = queue.Pop()
 		},
 	)
-	if err == nil {
-		upstream.reqSpeed.Add(1)
-	}
 	return
 }
