@@ -81,8 +81,3 @@ func (ctrl *UpstreamController) Upstreams(c *gin.Context) (result sth.Result, er
 	}
 	return ctrl.upstreamMgr.Upstreams(status)
 }
-
-// UpstreamsInfo TODO
-func (ctrl *UpstreamController) UpstreamsInfo(c *gin.Context) (sth.Result, error) {
-	return ctrl.upstreamMgr.Info(), nil
-}

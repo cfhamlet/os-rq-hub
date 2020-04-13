@@ -11,7 +11,6 @@ func RouteUpstreamsCtrl(root ginserv.RouterGroup, ctrl *controllers.UpstreamCont
 	g := root.Group("/upstreams/")
 	routes := []*route.Route{
 		route.New(g.GET, "/", ctrl.Upstreams),
-		route.New(g.GET, "/info/", ctrl.UpstreamsInfo),
 	}
 	route.Bind(routes, controllers.ErrorCode)
 }
