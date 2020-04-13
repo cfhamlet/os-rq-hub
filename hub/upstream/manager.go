@@ -9,6 +9,8 @@ import (
 
 	"github.com/cfhamlet/os-rq-hub/hub/global"
 	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
+	"github.com/cfhamlet/os-rq-pod/pod/queuebox"
+	"github.com/prep/average"
 
 	"github.com/cfhamlet/os-rq-pod/pkg/log"
 	"github.com/cfhamlet/os-rq-pod/pkg/request"
@@ -30,6 +32,7 @@ type Manager struct {
 	waitStop        *sync.WaitGroup
 	rand            *rand.Rand
 	client          *redis.Client
+	reqSpeed        *average.SlidingWindow
 	*sync.RWMutex
 }
 
@@ -61,6 +64,7 @@ func NewManager(serv *serv.Serv, client *redis.Client) *Manager {
 		&sync.WaitGroup{},
 		rand.New(rand.NewSource(time.Now().UnixNano())),
 		client,
+		queuebox.MustNewMinuteWindow(),
 		&sync.RWMutex{},
 	}
 
@@ -218,7 +222,7 @@ func (mgr *Manager) Stop() {
 			log.Logger.Warning(upstream.logFormat("stop fail %s", err))
 		}
 	}
-
+	mgr.reqSpeed.Stop()
 	mgr.waitStop.Wait()
 }
 
@@ -300,6 +304,25 @@ func (mgr *Manager) Upstreams(status Status) (result sth.Result, err error) {
 	return
 }
 
+// Info TODO
+func (mgr *Manager) Info() (result sth.Result, err error) {
+	mgr.RLock()
+	defer mgr.RUnlock()
+	result = sth.Result{}
+	total := 0
+	out := sth.Result{}
+	for status, upstreams := range mgr.statusUpstreams {
+		size := upstreams.Size()
+		out[utils.Text(status)] = size
+		total += size
+	}
+	result["upstreams"] = out
+	result["total"] = total
+	result["queues"] = mgr.queueBulk.Size()
+	result["speed_5s"] = queuebox.WindowTotal(mgr.reqSpeed, 5)
+	return
+}
+
 // AllUpstreams TODO
 func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 	mgr.RLock()
@@ -325,6 +348,7 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 	result["upstreams"] = out
 	result["total"] = total
 	result["queues"] = mgr.queueBulk.Size()
+	result["speed_5s"] = queuebox.WindowTotal(mgr.reqSpeed, 5)
 	return
 }
 
@@ -362,7 +386,11 @@ func (mgr *Manager) PopRequest(qid sth.QueueID) (req *request.Request, err error
 }
 
 func (mgr *Manager) xxPopRequest(qid sth.QueueID) (req *request.Request, err error) {
-	return mgr.queueBulk.PopRequest(qid)
+	req, err = mgr.queueBulk.PopRequest(qid)
+	if err == nil {
+		mgr.reqSpeed.Add(1)
+	}
+	return
 }
 
 func (mgr *Manager) doMustExist(id ID, f CallByUpstream) (result sth.Result, err error) {

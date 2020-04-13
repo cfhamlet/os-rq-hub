@@ -13,7 +13,9 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pkg/slicemap"
 	"github.com/cfhamlet/os-rq-pod/pkg/sth"
 	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
+	"github.com/cfhamlet/os-rq-pod/pod/queuebox"
 	"github.com/go-redis/redis/v7"
+	"github.com/prep/average"
 	"github.com/segmentio/fasthash/fnv1a"
 )
 
@@ -65,10 +67,11 @@ func NewStoreMeta(upstream *Upstream) *StoreMeta {
 type Upstream struct {
 	mgr *Manager
 	*Meta
-	status Status
-	queues *slicemap.Viewer
-	client *http.Client
-	qtask  *UpdateQueuesTask
+	status   Status
+	queues   *slicemap.Viewer
+	client   *http.Client
+	reqSpeed *average.SlidingWindow
+	qtask    *UpdateQueuesTask
 }
 
 // NewUpstream TODO
@@ -79,6 +82,7 @@ func NewUpstream(mgr *Manager, meta *Meta) *Upstream {
 		UpstreamInit,
 		slicemap.NewViewer(nil),
 		&http.Client{},
+		queuebox.MustNewMinuteWindow(),
 		nil,
 	}
 
@@ -212,6 +216,7 @@ func (upstream *Upstream) teardown(status Status) (err error) {
 		log.Logger.Errorf(upstream.logFormat("teardown %s", err))
 	}
 
+	upstream.reqSpeed.Stop()
 	return
 }
 
@@ -223,10 +228,11 @@ func (upstream *Upstream) Stop() (err error) {
 // Info TODO
 func (upstream *Upstream) Info() (result sth.Result) {
 	return sth.Result{
-		"id":     upstream.ID,
-		"api":    upstream.API,
-		"status": upstream.status,
-		"queues": upstream.queues.Size(),
+		"id":       upstream.ID,
+		"api":      upstream.API,
+		"status":   upstream.status,
+		"queues":   upstream.queues.Size(),
+		"speed_5s": queuebox.WindowTotal(upstream.reqSpeed, 5),
 	}
 }
 
@@ -289,5 +295,8 @@ func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsi
 			req, qsize, err = queue.Pop()
 		},
 	)
+	if err == nil {
+		upstream.reqSpeed.Add(1)
+	}
 	return
 }
