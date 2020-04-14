@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -31,18 +32,39 @@ type Manager struct {
 	queueBulk       *QueueBulk
 	waitStop        *sync.WaitGroup
 	rand            *rand.Rand
-	client          *redis.Client
+	redisClient     *redis.Client
+	httpClient      *http.Client
 	reqSpeed        *average.SlidingWindow
 	*sync.RWMutex
 }
 
 // OnStart TODO
 func (mgr *Manager) OnStart(context.Context) (err error) {
+	mgr.initHTTPClient()
 	err = mgr.Load()
 	if err == nil {
 		err = mgr.Start()
 	}
 	return
+}
+
+func (mgr *Manager) initHTTPClient() {
+	conf := mgr.serv.Conf()
+	mich := conf.GetInt("upstream.http.maxidleconnsperhost")
+	mic := conf.GetInt("upstream.http.maxidleconns")
+	ict := time.Duration(conf.GetInt64("upstream.http.idleconntimeout")) * time.Second
+	t := &http.Transport{
+		MaxIdleConnsPerHost: mich,
+		MaxIdleConns:        mic,
+		IdleConnTimeout:     ict,
+	}
+	mgr.httpClient = &http.Client{Transport: t}
+	log.Logger.Debugf("new client maxidleconnsperhost %d, maxidleconns %d, idleconntimeout %v", mich, mic, ict)
+}
+
+// HTTPClient TODO
+func (mgr *Manager) HTTPClient() *http.Client {
+	return mgr.httpClient
 }
 
 // OnStop TODO
@@ -52,7 +74,7 @@ func (mgr *Manager) OnStop(context.Context) error {
 }
 
 // NewManager TODO
-func NewManager(serv *serv.Serv, client *redis.Client) *Manager {
+func NewManager(serv *serv.Serv, redisClient *redis.Client) *Manager {
 	statusUpstreams := map[Status]*slicemap.Viewer{}
 	for _, status := range UpstreamStatusList {
 		statusUpstreams[status] = slicemap.NewViewer(nil)
@@ -63,7 +85,8 @@ func NewManager(serv *serv.Serv, client *redis.Client) *Manager {
 		nil,
 		&sync.WaitGroup{},
 		rand.New(rand.NewSource(time.Now().UnixNano())),
-		client,
+		redisClient,
+		nil,
 		queuebox.MustNewMinuteWindow(),
 		&sync.RWMutex{},
 	}
@@ -78,7 +101,7 @@ func (mgr *Manager) Load() (err error) {
 
 	log.Logger.Info("load upstreams start")
 
-	scanner := utils.NewScanner(mgr.client, "hscan", global.RedisUpstreamsKey, "*", 1000)
+	scanner := utils.NewScanner(mgr.redisClient, "hscan", global.RedisUpstreamsKey, "*", 1000)
 	err = scanner.Scan(
 		func(keys []string) (err error) {
 			isKey := false
@@ -309,15 +332,12 @@ func (mgr *Manager) Info() (result sth.Result, err error) {
 	mgr.RLock()
 	defer mgr.RUnlock()
 	result = sth.Result{}
-	total := 0
 	out := sth.Result{}
 	for status, upstreams := range mgr.statusUpstreams {
 		size := upstreams.Size()
 		out[utils.Text(status)] = size
-		total += size
 	}
 	result["upstreams"] = out
-	result["total"] = total
 	result["queues"] = mgr.queueBulk.Size()
 	result["speed_5s"] = queuebox.WindowTotal(mgr.reqSpeed, 5)
 	return
@@ -328,7 +348,6 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 	mgr.RLock()
 	defer mgr.RUnlock()
 	result = sth.Result{}
-	total := 0
 	out := sth.Result{}
 	for status, upstreams := range mgr.statusUpstreams {
 		s := []sth.Result{}
@@ -340,13 +359,11 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 		iter.Iter(func(item slicemap.Item) bool {
 			upstream := item.(*Upstream)
 			s = append(s, upstream.Info())
-			total++
 			return true
 		})
 		out[utils.Text(status)] = s
 	}
 	result["upstreams"] = out
-	result["total"] = total
 	result["queues"] = mgr.queueBulk.Size()
 	result["speed_5s"] = queuebox.WindowTotal(mgr.reqSpeed, 5)
 	return

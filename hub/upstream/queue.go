@@ -94,7 +94,7 @@ func (queue *Queue) getRequest() (req *request.Request, err error) {
 		err = APIError{"new request", err}
 		return
 	}
-	resp, err := queue.upstream.client.Do(r)
+	resp, err := queue.upstream.mgr.HTTPClient().Do(r)
 	if err != nil {
 		err = APIError{"response", err}
 		return
