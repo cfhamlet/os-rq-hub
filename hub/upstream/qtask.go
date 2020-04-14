@@ -45,7 +45,6 @@ type UpdateQueuesTask struct {
 	operations []operate
 	quickStop  *StopCtx
 	waitStop   *StopCtx
-	client     *http.Client
 }
 
 // NewUpdateQueuesTask TODO
@@ -55,7 +54,6 @@ func NewUpdateQueuesTask(upstream *Upstream) *UpdateQueuesTask {
 		[]operate{},
 		NewStopCtx(),
 		NewStopCtx(),
-		&http.Client{},
 	}
 }
 
@@ -96,7 +94,7 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 		return
 	}
 
-	resp, err := task.client.Do(req)
+	resp, err := task.upstream.mgr.HTTPClient().Do(req)
 	if err != nil {
 		err = APIError{"response", err}
 		return
@@ -271,6 +269,6 @@ func (task *UpdateQueuesTask) Stop() {
 	select {
 	case <-task.waitStop.Done():
 	case <-time.After(time.Second * 10):
-		task.waitStop.Stop()
 	}
+	task.waitStop.Stop()
 }

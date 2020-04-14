@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"time"
 
@@ -70,7 +69,6 @@ type Upstream struct {
 	status   Status
 	queues   *slicemap.Viewer
 	qheap    *QueueHeap
-	client   *http.Client
 	reqSpeed *average.SlidingWindow
 	qtask    *UpdateQueuesTask
 }
@@ -83,7 +81,6 @@ func NewUpstream(mgr *Manager, meta *Meta) *Upstream {
 		UpstreamInit,
 		slicemap.NewViewer(nil),
 		NewQueueHeap(),
-		&http.Client{},
 		queuebox.MustNewMinuteWindow(),
 		nil,
 	}
@@ -165,9 +162,9 @@ func (upstream *Upstream) SetStatus(newStatus Status) (err error) {
 		newStatus != UpstreamUnavailable {
 		storeMeta := NewStoreMeta(upstream)
 		storeMeta.Status = newStatus
-		err = saveMeta(mgr.client, storeMeta)
+		err = saveMeta(mgr.redisClient, storeMeta)
 	} else if newStatus == UpstreamRemoved {
-		_, err = mgr.client.HDel(global.RedisUpstreamsKey, string(upstream.ID)).Result()
+		_, err = mgr.redisClient.HDel(global.RedisUpstreamsKey, string(upstream.ID)).Result()
 	}
 
 	if err == nil {
