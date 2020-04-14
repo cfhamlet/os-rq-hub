@@ -97,14 +97,12 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 	resp, err := task.upstream.mgr.HTTPClient().Do(req)
 	if err != nil {
 		err = APIError{"response", err}
+		_, _ = ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		err = APIError{fmt.Sprintf("http code %d", resp.StatusCode), nil}
-		return
-	}
+	defer resp.Body.Close()
 	var body []byte
 	body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -112,6 +110,10 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 		return
 	}
 
+	if resp.StatusCode != 200 {
+		err = APIError{fmt.Sprintf("http code %d", resp.StatusCode), nil}
+		return
+	}
 	result := sth.Result{}
 	err = json.Unmarshal(body, &result)
 	if err != nil {
@@ -156,18 +158,41 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 		}
 	}
 	if err == nil {
-		log.Logger.Debugf(task.upstream.logFormat("parse queues num: %d new: %d", num, new))
+		log.Logger.Debugf(task.upstream.logFormat("parse queues num:%d new:%d", num, new))
 	}
 	return
 }
 
-func (task *UpdateQueuesTask) updateQueues() {
+func (task *UpdateQueuesTask) forUpdate() error {
 	upstream := task.upstream
-	status := upstream.Status()
-	if status == UpstreamPaused {
-		log.Logger.Warningf(task.upstream.logFormat("paused"))
+	if upstream.Status() == UpstreamPaused {
+		return fmt.Errorf("paused")
+	}
+	num := upstream.queues.Size()
+	all := upstream.mgr.queueBulk.Size()
+	n := upstream.mgr.statusUpstreams[UpstreamWorking].Size()
+	if n == 0 {
+		return nil
+	}
+	max := upstream.mgr.serv.Conf().GetInt64("limit.queue.num")
+	avg := max / int64(n)
+	if all >= max {
+		if int64(num) > avg {
+			return fmt.Errorf("exceed max:%d total:%d num:%d avg:%d",
+				max, all, num, avg)
+		}
+	}
+
+	return nil
+}
+
+func (task *UpdateQueuesTask) updateQueues() {
+	err := task.forUpdate()
+	if err != nil {
+		log.Logger.Warningf(task.upstream.logFormat(err.Error()))
 		return
 	}
+	upstream := task.upstream
 	qMetas, err := task.getQueueMetas()
 	if err != nil {
 		switch err.(type) {
@@ -179,7 +204,7 @@ func (task *UpdateQueuesTask) updateQueues() {
 		log.Logger.Error(task.upstream.logFormat("%s", err))
 		return
 	}
-	if status == UpstreamUnavailable {
+	if upstream.Status() == UpstreamUnavailable {
 		_, _ = upstream.mgr.SetStatus(upstream.ID, UpstreamWorking)
 	}
 	if len(qMetas) <= 0 {

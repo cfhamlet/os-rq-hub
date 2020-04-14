@@ -50,16 +50,19 @@ func (mgr *Manager) OnStart(context.Context) (err error) {
 
 func (mgr *Manager) initHTTPClient() {
 	conf := mgr.serv.Conf()
-	mich := conf.GetInt("upstream.http.maxidleconnsperhost")
-	mic := conf.GetInt("upstream.http.maxidleconns")
-	ict := time.Duration(conf.GetInt64("upstream.http.idleconntimeout")) * time.Second
+	maxidleconnsperhost := conf.GetInt("upstream.http.maxidleconnsperhost")
+	maxidleconns := conf.GetInt("upstream.http.maxidleconns")
+	idleconntimeout := time.Duration(conf.GetInt64("upstream.http.idleconntimeout")) * time.Second
 	t := &http.Transport{
-		MaxIdleConnsPerHost: mich,
-		MaxIdleConns:        mic,
-		IdleConnTimeout:     ict,
+		MaxIdleConnsPerHost: maxidleconnsperhost,
+		MaxIdleConns:        maxidleconns,
+		IdleConnTimeout:     idleconntimeout,
 	}
-	mgr.httpClient = &http.Client{Transport: t}
-	log.Logger.Debugf("new client maxidleconnsperhost %d, maxidleconns %d, idleconntimeout %v", mich, mic, ict)
+	mgr.httpClient = &http.Client{
+		Transport: t,
+	}
+	log.Logger.Debugf("new client maxidleconnsperhost:%d maxidleconns:%d idleconntimeout:%v",
+		maxidleconnsperhost, maxidleconns, idleconntimeout)
 }
 
 // HTTPClient TODO

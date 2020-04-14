@@ -97,16 +97,19 @@ func (queue *Queue) getRequest() (req *request.Request, err error) {
 	resp, err := queue.upstream.mgr.HTTPClient().Do(r)
 	if err != nil {
 		err = APIError{"response", err}
+		_, _ = ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		return
 	}
+
 	defer resp.Body.Close()
+	var body []byte
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		err = APIError{"read", err}
+		return
+	}
 	if resp.StatusCode == 200 {
-		var body []byte
-		body, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			err = APIError{"read", err}
-			return
-		}
 		req = &request.Request{}
 		err = json.Unmarshal(body, &req)
 	} else if resp.StatusCode == 404 {
