@@ -15,7 +15,7 @@ var DefaultConfig = map[string]interface{}{
 	"redis.db":                          0,
 	"limit.redis.memory":                1 << 30,
 	"limit.queue.num":                   10000,
-	"upstream.http.maxidleconnsperhost": 50,
-	"upstream.http.maxidleconns":        1000,
+	"upstream.http.maxidleconnsperhost": 200,
+	"upstream.http.maxidleconns":        10000,
 	"upstream.http.idleconntimeout":     90,
 }
