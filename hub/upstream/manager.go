@@ -373,13 +373,47 @@ func (mgr *Manager) AllUpstreams() (result sth.Result, err error) {
 }
 
 // UpdateQueues TODO
-func (mgr *Manager) UpdateQueues(id ID, qMetas []*QueueMeta) (sth.Result, error) {
+func (mgr *Manager) UpdateQueues(id ID, qMetas []*UpdateQueueMeta) (sth.Result, error) {
 	return mgr.withLockMustExist(id,
 		func(upstream *Upstream) (result sth.Result, err error) {
 			uNew := 0
 			gNew := 0
 			t := time.Now()
 			for _, qMeta := range qMetas {
+				if qMeta.kick == kickSelf {
+					queue := upstream.qheap.Top()
+					if queue == nil ||
+						t.Sub(queue.updateTime) < time.Duration(30*time.Second) {
+						continue
+					}
+					mgr.queueBulk.ClearUpstream(id, []sth.QueueID{queue.ID}, nil)
+				} else if qMeta.kick == kickOther {
+					i := int(qMeta.ID.ItemID())
+					iter := slicemap.NewCycleIter(mgr.statusUpstreams[UpstreamWorking].Map, i)
+					var idKick ID = Nil
+					var qidKick sth.QueueID
+					iter.Iter(
+						func(item slicemap.Item) bool {
+							up := item.(*Upstream)
+							if up == upstream ||
+								up.queues.Size() < upstream.queues.Size() {
+								return true
+							}
+							queue := up.qheap.Top()
+							if queue == nil || t.Sub(queue.updateTime) < time.Duration(30*time.Second) {
+								return true
+							}
+							idKick = up.ID
+							qidKick = queue.ID
+							return false
+						},
+					)
+					if idKick != Nil {
+						mgr.queueBulk.ClearUpstream(idKick, []sth.QueueID{qidKick}, nil)
+					} else {
+						continue
+					}
+				}
 				u, g := mgr.queueBulk.UpdateUpstream(upstream, qMeta)
 				uNew += u
 				gNew += g
