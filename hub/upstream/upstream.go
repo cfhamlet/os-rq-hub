@@ -21,6 +21,9 @@ import (
 // ID TODO
 type ID string
 
+// Nil TODO
+const Nil ID = ""
+
 // ItemID TODO
 func (id ID) ItemID() uint64 {
 	return fnv1a.HashString64(string(id))
@@ -236,7 +239,7 @@ func (upstream *Upstream) Info() (result sth.Result) {
 	}
 	top := upstream.qheap.Top()
 	if top != nil {
-		result["heap_top"] = top
+		result["heap_top"] = top.Info()
 	}
 	return
 }
@@ -247,20 +250,22 @@ func (upstream *Upstream) Status() Status {
 }
 
 // UpdateQueue TODO
-func (upstream *Upstream) UpdateQueue(qMeta *QueueMeta) bool {
+func (upstream *Upstream) UpdateQueue(qMeta *UpdateQueueMeta) bool {
 	new := false
 	upstream.queues.GetOrAdd(qMeta.ID.ItemID(),
 		func(item slicemap.Item) slicemap.Item {
 			var queue *Queue
 			if item == nil {
-				queue = NewQueue(upstream, qMeta)
+				queue = NewQueue(upstream, qMeta.QueueMeta)
 				upstream.qheap.Push(queue)
 				new = true
 			} else {
 				queue = item.(*Queue)
-				queue.qsize = qMeta.qsize
-				queue.updateTime = time.Now()
-				upstream.qheap.Update(queue)
+				if queue.qsize != qMeta.qsize {
+					queue.qsize = qMeta.qsize
+					queue.updateTime = time.Now()
+					upstream.qheap.Update(queue)
+				}
 			}
 			return queue
 		},

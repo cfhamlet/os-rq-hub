@@ -59,6 +59,12 @@ func (qb *QueueBulk) GetOrAdd(id uint64, f func(slicemap.Item) slicemap.Item) bo
 	return r
 }
 
+// Exist TODO
+func (qb *QueueBulk) Exist(qid sth.QueueID) bool {
+	id := qid.ItemID()
+	return qb.bulk(id).Get(id) != nil
+}
+
 // GetAndDelete TODO
 func (qb *QueueBulk) GetAndDelete(id uint64, f func(slicemap.Item) bool) bool {
 	r := qb.bulk(id).GetAndDelete(id, f)
@@ -69,7 +75,7 @@ func (qb *QueueBulk) GetAndDelete(id uint64, f func(slicemap.Item) bool) bool {
 }
 
 // UpdateUpstream TODO
-func (qb *QueueBulk) UpdateUpstream(upstream *Upstream, qMeta *QueueMeta) (int, int) {
+func (qb *QueueBulk) UpdateUpstream(upstream *Upstream, qMeta *UpdateQueueMeta) (int, int) {
 	uNew := 0
 	gNew := 0
 	iid := qMeta.ID.ItemID()

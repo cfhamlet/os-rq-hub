@@ -20,4 +20,4 @@ limit:
   redis:
     memory: 102400
   queue:
-    num: 1000
+    num: 10000

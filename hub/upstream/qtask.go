@@ -77,7 +77,7 @@ func (task *UpdateQueuesTask) apiPath(path string) (api string, err error) {
 	return
 }
 
-func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
+func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*UpdateQueueMeta, err error) {
 	var apiPath string
 	apiPath, err = task.apiPath("queues/")
 	if err != nil {
@@ -97,8 +97,10 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 	resp, err := task.upstream.mgr.HTTPClient().Do(req)
 	if err != nil {
 		err = APIError{"response", err}
-		_, _ = ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
+		if resp != nil {
+			_, _ = ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
 		return
 	}
 
@@ -123,18 +125,30 @@ func (task *UpdateQueuesTask) getQueueMetas() (qMetas []*QueueMeta, err error) {
 	return
 }
 
-func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*QueueMeta, err error) {
-	qMetas = []*QueueMeta{}
+func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*UpdateQueueMeta, err error) {
+	qMetas = []*UpdateQueueMeta{}
 	qs, ok := result["queues"]
 	if !ok {
 		err = fmt.Errorf(`"queues" not exist in %s`, result)
 		return
 	}
 	ql := qs.([]interface{})
-	num := 0
-	new := 0
+	var uniq int64 = 0
+	upstream := task.upstream
+	max := upstream.mgr.serv.Conf().GetInt64("limit.queue.num")
+	ups := upstream.mgr.statusUpstreams[UpstreamWorking].Size()
+	var avg int64 = 1
+	if ups > 0 {
+		t := max / int64(ups)
+		if t > 0 {
+			avg = t
+		}
+	}
+	all := upstream.mgr.queueBulk.Size()
+	num := int64(upstream.queues.Size())
+	oldest := upstream.qheap.Top()
+	now := time.Now()
 	for _, qt := range ql {
-		num++
 		qr := qt.(map[string]interface{})
 		q, ok := qr["qid"]
 		if !ok {
@@ -142,7 +156,8 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 			break
 		}
 		s := q.(string)
-		qid, err := queuebox.QueueIDFromString(s)
+		var qid sth.QueueID
+		qid, err = queuebox.QueueIDFromString(s)
 		if err != nil {
 			break
 		}
@@ -151,14 +166,34 @@ func (task *UpdateQueuesTask) queuesFromResult(result sth.Result) (qMetas []*Que
 		if ok {
 			qsize = int64(qz.(float64))
 		}
-
-		if !task.upstream.ExistQueue(qid) {
-			qMetas = append(qMetas, NewQueueMeta(qid, qsize))
-			new++
+		if task.upstream.ExistQueue(qid) {
+			continue
 		}
+
+		kick := kickNil
+		if !upstream.mgr.queueBulk.Exist(qid) {
+			uniq++
+			if all+uniq > max {
+				if num+uniq > avg {
+					if oldest != nil {
+						if now.Sub(oldest.updateTime) < time.Duration(30*time.Second) {
+							uniq--
+							break
+						}
+					}
+					kick = kickSelf
+				} else {
+					kick = kickOther
+				}
+			}
+		}
+		qMetas = append(qMetas, NewUpdateQueueMeta(qid, qsize, kick))
 	}
 	if err == nil {
-		log.Logger.Debugf(task.upstream.logFormat("parse queues num:%d new:%d", num, new))
+		log.Logger.Debugf(
+			upstream.logFormat(
+				"parse queues num:%d append:%d uniq:%d",
+				len(ql), len(qMetas), uniq))
 	}
 	return
 }
@@ -168,21 +203,6 @@ func (task *UpdateQueuesTask) forUpdate() error {
 	if upstream.Status() == UpstreamPaused {
 		return fmt.Errorf("paused")
 	}
-	num := upstream.queues.Size()
-	all := upstream.mgr.queueBulk.Size()
-	n := upstream.mgr.statusUpstreams[UpstreamWorking].Size()
-	if n == 0 {
-		return nil
-	}
-	max := upstream.mgr.serv.Conf().GetInt64("limit.queue.num")
-	avg := max / int64(n)
-	if all >= max {
-		if int64(num) > avg {
-			return fmt.Errorf("exceed max:%d total:%d num:%d avg:%d",
-				max, all, num, avg)
-		}
-	}
-
 	return nil
 }
 

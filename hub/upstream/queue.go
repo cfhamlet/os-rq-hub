@@ -14,6 +14,29 @@ import (
 	"github.com/cfhamlet/os-rq-pod/pod/global"
 )
 
+type kickType int
+
+const (
+	kickNil   kickType = 0
+	kickSelf  kickType = 1
+	kickOther kickType = 2
+)
+
+// UpdateQueueMeta TODO
+type UpdateQueueMeta struct {
+	*QueueMeta
+	kick kickType
+}
+
+func (meta *UpdateQueueMeta) String() string {
+	return fmt.Sprintf("%v %d", meta.QueueMeta, meta.kick)
+}
+
+// NewUpdateQueueMeta TODO
+func NewUpdateQueueMeta(qid sth.QueueID, qsize int64, kick kickType) *UpdateQueueMeta {
+	return &UpdateQueueMeta{NewQueueMeta(qid, qsize), kick}
+}
+
 // QueueMeta TODO
 type QueueMeta struct {
 	ID    sth.QueueID
@@ -97,8 +120,10 @@ func (queue *Queue) getRequest() (req *request.Request, err error) {
 	resp, err := queue.upstream.mgr.HTTPClient().Do(r)
 	if err != nil {
 		err = APIError{"response", err}
-		_, _ = ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
+		if resp != nil {
+			_, _ = ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
 		return
 	}
 

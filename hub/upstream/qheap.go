@@ -45,7 +45,7 @@ func (qh *queueHeap) Pop() interface{} {
 
 // Pop TODO
 func (qh *queueHeap) Top() *Queue {
-	return (*qh)[len(*qh)-1]
+	return (*qh)[0]
 }
 
 // QueueHeap TODO
