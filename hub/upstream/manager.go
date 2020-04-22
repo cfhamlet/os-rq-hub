@@ -301,12 +301,15 @@ func (mgr *Manager) xxQueues(k int) (result sth.Result) {
 }
 
 // Queues TODO
-func (mgr *Manager) Queues(k int) (result sth.Result) {
-	r, _ := mgr.serv.DoWithLockOnWorkStatus(
+func (mgr *Manager) Queues(k int) (sth.Result, error) {
+	r, e := mgr.serv.DoWithLockOnWorkStatus(
 		func() (interface{}, error) {
 			return mgr.xxQueues(k), nil
 		}, true, true)
-	return r.(sth.Result)
+	if r == nil {
+		return nil, e
+	}
+	return r.(sth.Result), e
 }
 
 // Upstreams TODO
