@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/cfhamlet/os-go-rq/controllers"
+	"github.com/cfhamlet/os-rq-pod/pkg/serv"
 	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 )
 
@@ -16,7 +17,8 @@ func ErrorCode(err error) int {
 		code = http.StatusBadRequest
 	case plobal.NotExistError:
 		code = http.StatusNotFound
-	case plobal.UnavailableError, plobal.ExistError:
+	case plobal.UnavailableError, plobal.ExistError,
+		*serv.StatusConflictError, *serv.StatusError:
 		code = http.StatusNotAcceptable
 	default:
 		code = http.StatusInternalServerError
