@@ -433,17 +433,17 @@ func (mgr *Manager) DeleteQueues(id ID, queueIDs []sth.QueueID, ts *time.Time) (
 		}, true)
 }
 
-// PopRequest TODO
-func (mgr *Manager) PopRequest(qid sth.QueueID) (req *request.Request, err error) {
+// DequeueRequest TODO
+func (mgr *Manager) DequeueRequest(qid sth.QueueID) (req *request.Request, err error) {
 	r, e := mgr.serv.DoWithLockOnWorkStatus(
 		func() (interface{}, error) {
-			return mgr.xxPopRequest(qid)
+			return mgr.xxDequeueRequest(qid)
 		}, true, true)
 	return r.(*request.Request), e
 }
 
-func (mgr *Manager) xxPopRequest(qid sth.QueueID) (req *request.Request, err error) {
-	req, err = mgr.queueBulk.PopRequest(qid)
+func (mgr *Manager) xxDequeueRequest(qid sth.QueueID) (req *request.Request, err error) {
+	req, err = mgr.queueBulk.DequeueRequest(qid)
 	if err == nil {
 		mgr.reqSpeed.Add(1)
 	}

@@ -60,7 +60,7 @@ func NewQueueMeta(qid sth.QueueID, qsize int64) *QueueMeta {
 
 // NewQueue TODO
 func NewQueue(upstream *Upstream, meta *QueueMeta) *Queue {
-	endpoint, err := url.Parse(fmt.Sprintf("queue/pop/?q=%s", meta.ID))
+	endpoint, err := url.Parse(fmt.Sprintf("queue/dequeue/?q=%s", meta.ID))
 	if err != nil {
 		panic(err)
 	}
@@ -151,8 +151,8 @@ func (queue *Queue) Idle() bool {
 		queue.upstream.status != UpstreamWorking
 }
 
-// Pop TODO
-func (queue *Queue) Pop() (req *request.Request, qsize int64, err error) {
+// Dequeue TODO
+func (queue *Queue) Dequeue() (req *request.Request, qsize int64, err error) {
 	dequeuing := queue.incrDequeuing(1)
 	defer queue.decrDequeuing(1)
 	qsize = queue.QueueSize()
