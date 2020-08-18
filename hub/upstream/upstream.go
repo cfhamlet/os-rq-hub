@@ -292,8 +292,8 @@ func (upstream *Upstream) DeleteQueue(qid sth.QueueID, ts *time.Time) bool {
 	)
 }
 
-// PopRequest TODO
-func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsize int64, err error) {
+// DequeueRequest TODO
+func (upstream *Upstream) DequeueRequest(qid sth.QueueID) (req *request.Request, qsize int64, err error) {
 	if upstream.status != UpstreamWorking {
 		err = plobal.UnavailableError(fmt.Sprintf("%s %s", upstream.ID, upstream.status))
 		return
@@ -305,7 +305,7 @@ func (upstream *Upstream) PopRequest(qid sth.QueueID) (req *request.Request, qsi
 				return
 			}
 			queue := item.(*Queue)
-			req, qsize, err = queue.Pop()
+			req, qsize, err = queue.Dequeue()
 		},
 	)
 	return
