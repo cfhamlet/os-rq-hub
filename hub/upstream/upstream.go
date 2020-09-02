@@ -302,10 +302,11 @@ func (upstream *Upstream) DequeueRequest(qid sth.QueueID) (req *request.Request,
 		func(item slicemap.Item) {
 			if item == nil {
 				err = plobal.NotExistError(qid.String())
-				return
+			} else {
+				queue := item.(*Queue)
+				req, qsize, err = queue.Dequeue()
 			}
-			queue := item.(*Queue)
-			req, qsize, err = queue.Dequeue()
+			log.Logger.Debug(upstream.logFormat("dequeue %s %d %s", qid, qsize, err))
 		},
 	)
 	return
