@@ -174,7 +174,7 @@ func (qb *QueueBulk) DequeueRequest(qid sth.QueueID) (req *request.Request, err 
 					upstream := item.(*Upstream)
 					var qsize int64
 					req, qsize, err = upstream.DequeueRequest(qid)
-					if err != nil || qsize <= 0 {
+					if err != nil || qsize < 0 {
 						toBeDeleted = append(toBeDeleted, upstream.ID)
 						return true
 					}
