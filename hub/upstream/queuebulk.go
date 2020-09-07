@@ -174,7 +174,7 @@ func (qb *QueueBulk) PopRequest(qid sth.QueueID) (req *request.Request, err erro
 					upstream := item.(*Upstream)
 					var qsize int64
 					req, qsize, err = upstream.PopRequest(qid)
-					if err != nil || qsize <= 0 {
+					if err != nil || qsize < 0 {
 						toBeDeleted = append(toBeDeleted, upstream.ID)
 						return true
 					}
