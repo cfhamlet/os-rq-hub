@@ -156,8 +156,8 @@ func (qb *QueueBulk) clearQueue(qid sth.QueueID, id ID, ts *time.Time) (int, int
 	return uDel, gDel
 }
 
-// PopRequest TODO
-func (qb *QueueBulk) PopRequest(qid sth.QueueID) (req *request.Request, err error) {
+// DequeueRequest TODO
+func (qb *QueueBulk) DequeueRequest(qid sth.QueueID) (req *request.Request, err error) {
 	iid := qid.ItemID()
 	toBeDeleted := make([]ID, 0)
 	qb.bulk(iid).View(iid,
@@ -173,7 +173,7 @@ func (qb *QueueBulk) PopRequest(qid sth.QueueID) (req *request.Request, err erro
 				func(item slicemap.Item) bool {
 					upstream := item.(*Upstream)
 					var qsize int64
-					req, qsize, err = upstream.PopRequest(qid)
+					req, qsize, err = upstream.DequeueRequest(qid)
 					if err != nil || qsize < 0 {
 						toBeDeleted = append(toBeDeleted, upstream.ID)
 						return true
