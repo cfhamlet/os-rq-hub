@@ -20,14 +20,14 @@ func NewRequestController(upstreamMgr *upstream.Manager) *RequestController {
 	return &RequestController{upstreamMgr}
 }
 
-// PopRequest TODO
-func (ctrl *RequestController) PopRequest(c *gin.Context) (result sth.Result, err error) {
+// DequeueRequest TODO
+func (ctrl *RequestController) DequeueRequest(c *gin.Context) (result sth.Result, err error) {
 	q := c.Query("q")
 
 	qid, err := controllers.QueueIDFromQuery(q)
 	if err == nil {
 		var req *request.Request
-		req, err = ctrl.upstreamMgr.PopRequest(qid)
+		req, err = ctrl.upstreamMgr.DequeueRequest(qid)
 		if err == nil {
 			c.JSON(http.StatusOK, req)
 		}

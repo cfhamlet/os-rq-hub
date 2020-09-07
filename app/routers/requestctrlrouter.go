@@ -10,7 +10,7 @@ import (
 func RouteRequestCtrl(root ginserv.RouterGroup, ctrl *controllers.RequestController) {
 	g := root.Group("/queue/")
 	routes := []*route.Route{
-		route.New(g.POST, "/pop/", ctrl.PopRequest),
+		route.New(g.POST, "/dequeue/", ctrl.DequeueRequest),
 	}
 	route.Bind(routes, controllers.ErrorCode)
 }
