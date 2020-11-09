@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/cfhamlet/os-go-rq/controllers"
+	"github.com/cfhamlet/os-rq-pod/app/controllers"
 	"github.com/cfhamlet/os-rq-pod/pkg/serv"
 	plobal "github.com/cfhamlet/os-rq-pod/pod/global"
 )
