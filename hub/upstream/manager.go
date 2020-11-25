@@ -109,7 +109,7 @@ func (mgr *Manager) Load() (err error) {
 		func(keys []string) (err error) {
 			isKey := false
 			for _, key := range keys {
-				err = mgr.serv.SetStatus(serv.Preparing)
+				_, err = mgr.serv.SetStatus(serv.Preparing)
 				if err != nil {
 					return
 				}
