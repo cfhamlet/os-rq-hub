@@ -14,8 +14,6 @@ github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+Ce
 github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
 github.com/cfhamlet/os-go-netloc-rule v0.0.6 h1:MIuirhqo3P+0P4d0bClyItwWUXmzLWg4ii8e2o4mzlM=
 github.com/cfhamlet/os-go-netloc-rule v0.0.6/go.mod h1:QMsbtrspcBdLMgUDxOCkGzA/vjUmCUzWvyJoBzcy8JY=
-github.com/cfhamlet/os-rq-pod v0.3.3 h1:l5d+Xs4zq/Fb+4c9ZRCrTdFaUtIxtu7V85Eyup83sZs=
-github.com/cfhamlet/os-rq-pod v0.3.3/go.mod h1:k36PNKqBOMVCfNS7MPaavq1CuCodBPTo+NZzkMhOKw4=
 github.com/cfhamlet/os-rq-pod v0.3.4 h1:JOigWrizLVsO0FFblyRt58qWz+6jarAx2WGoxYSPZHk=
 github.com/cfhamlet/os-rq-pod v0.3.4/go.mod h1:k36PNKqBOMVCfNS7MPaavq1CuCodBPTo+NZzkMhOKw4=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
